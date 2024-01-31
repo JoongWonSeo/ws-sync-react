@@ -2,8 +2,8 @@
   "name": "ws-sync",
   "version": "0.2.0",
   "description": "WebSocket Sync: Frontend",
-  "main": "dist/index",
-  "types": "dist/index",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
