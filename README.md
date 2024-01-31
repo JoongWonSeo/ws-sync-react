@@ -1,1 +1,2 @@
-# ws-sync-react
+# ws-sync
+

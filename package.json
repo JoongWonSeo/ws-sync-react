@@ -1,0 +1,40 @@
+{
+  "name": "ws-sync",
+  "version": "0.2.0",
+  "description": "WebSocket Sync: Frontend",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoongWonSeo/ws-sync-react.git"
+  },
+  "author": "Joong-Won Seo",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/JoongWonSeo/ws-sync-react/issues"
+  },
+  "homepage": "https://github.com/JoongWonSeo/ws-sync-react#readme",
+  "devDependencies": {
+    "@types/react": "^18.2.48",
+    "@types/uuid": "^9.0.8",
+    "typescript": "^5.3.3"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "dependencies": {
+    "@uidotdev/usehooks": "^2.4.1",
+    "fast-json-patch": "^3.1.1",
+    "immer": "^10.0.3",
+    "sonner": "^1.4.0",
+    "uuid": "^9.0.1"
+  }
+}
