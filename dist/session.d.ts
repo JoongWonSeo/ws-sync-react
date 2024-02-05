@@ -6,8 +6,9 @@ interface SessionProviderProps {
     context: Context<Session | null>;
     autoconnect?: boolean;
     wsAuth?: boolean;
+    toast?: any;
 }
-export declare const SessionProvider: ({ url, children, context, autoconnect, wsAuth }: SessionProviderProps) => import("react/jsx-runtime").JSX.Element;
+export declare const SessionProvider: ({ url, toast, children, context, autoconnect, wsAuth }: SessionProviderProps) => import("react/jsx-runtime").JSX.Element;
 export declare class Session {
     url: string;
     ws: WebSocket | null;
@@ -16,12 +17,13 @@ export declare class Session {
     minRetryInterval: number;
     maxRetryInterval: number;
     retryInterval: number;
+    toast: any;
     private eventHandlers;
     private initHandlers;
     private binaryHandler;
     private retryTimeout;
     private autoReconnect;
-    constructor(url: string, minRetryInterval?: number, maxRetryInterval?: number);
+    constructor(url: string, toast?: any, minRetryInterval?: number, maxRetryInterval?: number);
     registerEvent(event: string, callback: (data: any) => void): void;
     deregisterEvent(event: string): void;
     registerInit(key: string, callback: () => void): void;

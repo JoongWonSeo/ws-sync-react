@@ -1,9 +1,9 @@
 import { useEffect } from "react"
-import { toast } from "sonner"
+// import { toast } from "sonner"
 import { Session } from "./session"
 
 // remote toast handler
-export const useRemoteToast = (session: Session | null, prefix: string = "") => {
+export const useRemoteToast = (session: Session | null, toast: any, prefix: string = "") => {
   useEffect(() => {
     session?.registerEvent("_TOAST", ({ message, type }) => {
       switch (type) {

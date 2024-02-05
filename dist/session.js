@@ -4,11 +4,11 @@ exports.Session = exports.SessionProvider = exports.DefaultSessionContext = void
 const jsx_runtime_1 = require("react/jsx-runtime");
 const usehooks_1 = require("@uidotdev/usehooks");
 const react_1 = require("react");
-const sonner_1 = require("sonner");
+// import { this.toast } from 'sonner'
 const uuid_1 = require("uuid");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
-const SessionProvider = ({ url, children, context, autoconnect, wsAuth }) => {
-    const session = (0, react_1.useMemo)(() => new Session(url), [url]);
+const SessionProvider = ({ url, toast, children, context, autoconnect, wsAuth }) => {
+    const session = (0, react_1.useMemo)(() => new Session(url, toast), [url]);
     if (wsAuth) {
         const [userId, setUserId] = (0, usehooks_1.useLocalStorage)(`_USER_ID`, null);
         const [sessionId, setSessionId] = (0, usehooks_1.useSessionStorage)(`_SESSION_ID`, null);
@@ -40,7 +40,7 @@ const SessionProvider = ({ url, children, context, autoconnect, wsAuth }) => {
 };
 exports.SessionProvider = SessionProvider;
 class Session {
-    constructor(url, minRetryInterval = 250, maxRetryInterval = 10000) {
+    constructor(url, toast = null, minRetryInterval = 250, maxRetryInterval = 10000) {
         this.ws = null;
         this.isConnected = false;
         this.onConnectionChange = undefined;
@@ -53,6 +53,7 @@ class Session {
         this.minRetryInterval = minRetryInterval;
         this.maxRetryInterval = maxRetryInterval;
         this.retryInterval = minRetryInterval;
+        this.toast = toast;
     }
     registerEvent(event, callback) {
         if (event in this.eventHandlers)
@@ -85,36 +86,39 @@ class Session {
         this.binaryHandler = null;
     }
     send(event, data) {
-        var _a, _b;
+        var _a, _b, _c;
         if (((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) !== WebSocket.OPEN) {
-            sonner_1.toast.error(`Sending while not connected!`);
+            (_b = this.toast) === null || _b === void 0 ? void 0 : _b.error(`Sending while not connected!`);
             return;
         }
-        (_b = this.ws) === null || _b === void 0 ? void 0 : _b.send(JSON.stringify({
+        (_c = this.ws) === null || _c === void 0 ? void 0 : _c.send(JSON.stringify({
             type: event,
             data: data,
         }));
     }
     connect() {
+        var _a;
         console.log('connecting to ', this.url);
-        sonner_1.toast.info('Connecting to server...');
+        (_a = this.toast) === null || _a === void 0 ? void 0 : _a.info('Connecting to server...');
         this.ws = new WebSocket(this.url);
         this.autoReconnect = true;
         this.ws.onopen = () => {
+            var _a;
             console.log('connected');
-            sonner_1.toast.success('Connected to server!');
+            (_a = this.toast) === null || _a === void 0 ? void 0 : _a.success('Connected to server!');
             this.isConnected = true;
             if (this.onConnectionChange)
                 this.onConnectionChange(this.isConnected);
             this.retryInterval = this.minRetryInterval;
         };
         this.ws.onclose = () => {
+            var _a, _b;
             console.log('disconnected');
             this.isConnected = false;
             if (this.onConnectionChange)
                 this.onConnectionChange(this.isConnected);
             if (this.autoReconnect) {
-                sonner_1.toast.warning(`Disconnected from server: Retrying in ${this.retryInterval / 1000} seconds...`);
+                (_a = this.toast) === null || _a === void 0 ? void 0 : _a.warning(`Disconnected from server: Retrying in ${this.retryInterval / 1000} seconds...`);
                 this.retryTimeout = setTimeout(() => {
                     // skip if we've already reconnected or deleted
                     if (this !== null && this.url && !this.isConnected) {
@@ -125,14 +129,14 @@ class Session {
                 this.retryInterval = Math.min(this.retryInterval * 2, this.maxRetryInterval);
             }
             else {
-                sonner_1.toast.warning('Disconnected from server!');
+                (_b = this.toast) === null || _b === void 0 ? void 0 : _b.warning('Disconnected from server!');
             }
         };
         this.ws.onerror = (err) => {
-            var _a;
+            var _a, _b;
             console.error("Socket encountered error: ", err, "Closing socket");
-            sonner_1.toast.error(`Socket Error: ${err}`);
-            (_a = this.ws) === null || _a === void 0 ? void 0 : _a.close();
+            (_a = this.toast) === null || _a === void 0 ? void 0 : _a.error(`Socket Error: ${err}`);
+            (_b = this.ws) === null || _b === void 0 ? void 0 : _b.close();
         };
         this.ws.onmessage = (e) => { this.handleReceiveEvent(e); };
         return () => {
@@ -158,12 +162,13 @@ class Session {
         }
     }
     handleReceiveEvent(e) {
+        var _a;
         if (typeof e.data === 'string') {
             // json message
             const event = JSON.parse(e.data);
             if (event.type == "_DISCONNECT") {
                 this.disconnect();
-                sonner_1.toast.loading(event.data, { duration: 10000000 });
+                (_a = this.toast) === null || _a === void 0 ? void 0 : _a.loading(event.data, { duration: 10000000 });
                 return;
             }
             if (event.type in this.eventHandlers) {
