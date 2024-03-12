@@ -7,8 +7,8 @@ const react_1 = require("react");
 // import { this.toast } from 'sonner'
 const uuid_1 = require("uuid");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
-const SessionProvider = ({ url, toast, children, context, autoconnect, wsAuth }) => {
-    const session = (0, react_1.useMemo)(() => new Session(url, toast), [url]);
+const SessionProvider = ({ url, label, toast, children, context, autoconnect, wsAuth }) => {
+    const session = (0, react_1.useMemo)(() => new Session(url, label, toast), [url]);
     if (wsAuth) {
         const [userId, setUserId] = (0, usehooks_1.useLocalStorage)(`_USER_ID`, null);
         const [sessionId, setSessionId] = (0, usehooks_1.useSessionStorage)(`_SESSION_ID`, null);
@@ -40,7 +40,7 @@ const SessionProvider = ({ url, toast, children, context, autoconnect, wsAuth })
 };
 exports.SessionProvider = SessionProvider;
 class Session {
-    constructor(url, toast = null, minRetryInterval = 250, maxRetryInterval = 10000) {
+    constructor(url, label = "Server", toast = null, minRetryInterval = 250, maxRetryInterval = 10000) {
         this.ws = null;
         this.isConnected = false;
         this.onConnectionChange = undefined;
@@ -50,6 +50,7 @@ class Session {
         this.retryTimeout = null; // scheduled retry
         this.autoReconnect = true;
         this.url = url;
+        this.label = label;
         this.minRetryInterval = minRetryInterval;
         this.maxRetryInterval = maxRetryInterval;
         this.retryInterval = minRetryInterval;
@@ -88,7 +89,7 @@ class Session {
     send(event, data) {
         var _a, _b, _c;
         if (((_a = this.ws) === null || _a === void 0 ? void 0 : _a.readyState) !== WebSocket.OPEN) {
-            (_b = this.toast) === null || _b === void 0 ? void 0 : _b.error(`Sending while not connected!`);
+            (_b = this.toast) === null || _b === void 0 ? void 0 : _b.error(`${this.label}: Sending while not connected!`);
             return;
         }
         (_c = this.ws) === null || _c === void 0 ? void 0 : _c.send(JSON.stringify({
@@ -99,13 +100,13 @@ class Session {
     connect() {
         var _a;
         console.log('connecting to ', this.url);
-        (_a = this.toast) === null || _a === void 0 ? void 0 : _a.info('Connecting to server...');
+        (_a = this.toast) === null || _a === void 0 ? void 0 : _a.info(`Connecting to ${this.label}...`);
         this.ws = new WebSocket(this.url);
         this.autoReconnect = true;
         this.ws.onopen = () => {
             var _a;
             console.log('connected');
-            (_a = this.toast) === null || _a === void 0 ? void 0 : _a.success('Connected to server!');
+            (_a = this.toast) === null || _a === void 0 ? void 0 : _a.success(`Connected to ${this.label}!`);
             this.isConnected = true;
             if (this.onConnectionChange)
                 this.onConnectionChange(this.isConnected);
@@ -118,7 +119,7 @@ class Session {
             if (this.onConnectionChange)
                 this.onConnectionChange(this.isConnected);
             if (this.autoReconnect) {
-                (_a = this.toast) === null || _a === void 0 ? void 0 : _a.warning(`Disconnected from server: Retrying in ${this.retryInterval / 1000} seconds...`);
+                (_a = this.toast) === null || _a === void 0 ? void 0 : _a.warning(`Disconnected from ${this.label}: Retrying in ${this.retryInterval / 1000} seconds...`);
                 this.retryTimeout = setTimeout(() => {
                     // skip if we've already reconnected or deleted
                     if (this !== null && this.url && !this.isConnected) {
@@ -129,13 +130,13 @@ class Session {
                 this.retryInterval = Math.min(this.retryInterval * 2, this.maxRetryInterval);
             }
             else {
-                (_b = this.toast) === null || _b === void 0 ? void 0 : _b.warning('Disconnected from server!');
+                (_b = this.toast) === null || _b === void 0 ? void 0 : _b.warning(`Disconnected from ${this.label}!`);
             }
         };
         this.ws.onerror = (err) => {
             var _a, _b;
             console.error("Socket encountered error: ", err, "Closing socket");
-            (_a = this.toast) === null || _a === void 0 ? void 0 : _a.error(`Socket Error: ${err}`);
+            (_a = this.toast) === null || _a === void 0 ? void 0 : _a.error(`${this.label}: Socket Error: ${err}`);
             (_b = this.ws) === null || _b === void 0 ? void 0 : _b.close();
         };
         this.ws.onmessage = (e) => { this.handleReceiveEvent(e); };
@@ -168,7 +169,7 @@ class Session {
             const event = JSON.parse(e.data);
             if (event.type == "_DISCONNECT") {
                 this.disconnect();
-                (_a = this.toast) === null || _a === void 0 ? void 0 : _a.loading(event.data, { duration: 10000000 });
+                (_a = this.toast) === null || _a === void 0 ? void 0 : _a.loading(`${this.label}: ${event.data}`, { duration: 10000000 });
                 return;
             }
             if (event.type in this.eventHandlers) {

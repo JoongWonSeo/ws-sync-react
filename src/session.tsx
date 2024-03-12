@@ -9,6 +9,7 @@ export const DefaultSessionContext = createContext<Session | null>(null)
 
 interface SessionProviderProps {
   url: string
+  label?: string
   children: React.ReactNode
   context: Context<Session | null>
   autoconnect?: boolean
@@ -16,8 +17,8 @@ interface SessionProviderProps {
   toast?: any
 }
 
-export const SessionProvider = ({ url, toast, children, context, autoconnect, wsAuth }: SessionProviderProps) => {
-  const session = useMemo(() => new Session(url, toast), [url])
+export const SessionProvider = ({ url, label, toast, children, context, autoconnect, wsAuth }: SessionProviderProps) => {
+  const session = useMemo(() => new Session(url, label, toast), [url])
 
   if (wsAuth) {
     const [userId, setUserId] = useLocalStorage<string | null>(`_USER_ID`, null)
@@ -60,6 +61,7 @@ export const SessionProvider = ({ url, toast, children, context, autoconnect, ws
 
 export class Session {
   url: string;
+  label: string;
   ws: WebSocket | null = null;
 
   isConnected: boolean = false;
@@ -77,8 +79,9 @@ export class Session {
 
 
 
-  constructor(url: string, toast: any = null, minRetryInterval: number = 250, maxRetryInterval: number = 10000) {
+  constructor(url: string, label: string = "Server", toast: any = null, minRetryInterval: number = 250, maxRetryInterval: number = 10000) {
     this.url = url;
+    this.label = label;
     this.minRetryInterval = minRetryInterval;
     this.maxRetryInterval = maxRetryInterval;
     this.retryInterval = minRetryInterval;
@@ -123,7 +126,7 @@ export class Session {
 
   send(event: string, data: any) {
     if (this.ws?.readyState !== WebSocket.OPEN) {
-      this.toast?.error(`Sending while not connected!`)
+      this.toast?.error(`${this.label}: Sending while not connected!`)
       return
     }
 
@@ -135,13 +138,13 @@ export class Session {
 
   connect() {
     console.log('connecting to ', this.url)
-    this.toast?.info('Connecting to server...')
+    this.toast?.info(`Connecting to ${this.label}...`)
     this.ws = new WebSocket(this.url)
     this.autoReconnect = true
 
     this.ws.onopen = () => {
       console.log('connected')
-      this.toast?.success('Connected to server!')
+      this.toast?.success(`Connected to ${this.label}!`)
       this.isConnected = true
       if (this.onConnectionChange)
         this.onConnectionChange(this.isConnected)
@@ -154,7 +157,7 @@ export class Session {
       if (this.onConnectionChange)
         this.onConnectionChange(this.isConnected)
       if (this.autoReconnect) {
-        this.toast?.warning(`Disconnected from server: Retrying in ${this.retryInterval / 1000} seconds...`)
+        this.toast?.warning(`Disconnected from ${this.label}: Retrying in ${this.retryInterval / 1000} seconds...`)
         this.retryTimeout = setTimeout(() => {
           // skip if we've already reconnected or deleted
           if (this !== null && this.url && !this.isConnected) {
@@ -164,7 +167,7 @@ export class Session {
         }, this.retryInterval)
         this.retryInterval = Math.min(this.retryInterval * 2, this.maxRetryInterval)
       } else {
-        this.toast?.warning('Disconnected from server!')
+        this.toast?.warning(`Disconnected from ${this.label}!`)
       }
     }
 
@@ -174,7 +177,7 @@ export class Session {
         err,
         "Closing socket"
       )
-      this.toast?.error(`Socket Error: ${err}`)
+      this.toast?.error(`${this.label}: Socket Error: ${err}`)
       this.ws?.close()
     }
 
@@ -209,7 +212,7 @@ export class Session {
       const event = JSON.parse(e.data)
       if (event.type == "_DISCONNECT") {
         this.disconnect()
-        this.toast?.loading(event.data, { duration: 10000000 })
+        this.toast?.loading(`${this.label}: ${event.data}`, { duration: 10000000 })
         return
       }
       if (event.type in this.eventHandlers) {
