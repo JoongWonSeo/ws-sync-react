@@ -1,5 +1,4 @@
 import { useEffect } from "react"
-// import { toast } from "sonner"
 import { Session } from "./session"
 
 // remote toast handler

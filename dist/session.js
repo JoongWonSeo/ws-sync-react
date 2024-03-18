@@ -1,10 +1,13 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Session = exports.SessionProvider = exports.DefaultSessionContext = void 0;
 const jsx_runtime_1 = require("react/jsx-runtime");
 const usehooks_1 = require("@uidotdev/usehooks");
+const js_file_download_1 = __importDefault(require("js-file-download"));
 const react_1 = require("react");
-// import { this.toast } from 'sonner'
 const uuid_1 = require("uuid");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
 const SessionProvider = ({ url, label, toast, children, context, autoconnect, wsAuth }) => {
@@ -99,13 +102,11 @@ class Session {
     }
     connect() {
         var _a;
-        console.log('connecting to ', this.url);
         (_a = this.toast) === null || _a === void 0 ? void 0 : _a.info(`Connecting to ${this.label}...`);
         this.ws = new WebSocket(this.url);
         this.autoReconnect = true;
         this.ws.onopen = () => {
             var _a;
-            console.log('connected');
             (_a = this.toast) === null || _a === void 0 ? void 0 : _a.success(`Connected to ${this.label}!`);
             this.isConnected = true;
             if (this.onConnectionChange)
@@ -114,7 +115,6 @@ class Session {
         };
         this.ws.onclose = () => {
             var _a, _b;
-            console.log('disconnected');
             this.isConnected = false;
             if (this.onConnectionChange)
                 this.onConnectionChange(this.isConnected);
@@ -123,7 +123,6 @@ class Session {
                 this.retryTimeout = setTimeout(() => {
                     // skip if we've already reconnected or deleted
                     if (this !== null && this.url && !this.isConnected) {
-                        console.log('reconnecting');
                         this.connect();
                     }
                 }, this.retryInterval);
@@ -172,7 +171,14 @@ class Session {
                 (_a = this.toast) === null || _a === void 0 ? void 0 : _a.loading(`${this.label}: ${event.data}`, { duration: 10000000 });
                 return;
             }
-            if (event.type in this.eventHandlers) {
+            if (event.type == "_DOWNLOAD") {
+                // decode the base64 data and download it
+                const { filename, data } = event.data;
+                const decodedData = atob(data); // Decode the base64 data
+                const blob = new Blob([decodedData], { type: 'application/octet-stream' });
+                (0, js_file_download_1.default)(blob, filename);
+            }
+            else if (event.type in this.eventHandlers) {
                 this.eventHandlers[event.type](event.data);
             }
             else {

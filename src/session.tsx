@@ -1,6 +1,6 @@
 import { useLocalStorage, useSessionStorage } from '@uidotdev/usehooks'
+import fileDownload from 'js-file-download'
 import { createContext, useMemo, useEffect, Context } from 'react'
-// import { this.toast } from 'sonner'
 import { v4 as uuid } from 'uuid'
 
 
@@ -137,13 +137,11 @@ export class Session {
   }
 
   connect() {
-    console.log('connecting to ', this.url)
     this.toast?.info(`Connecting to ${this.label}...`)
     this.ws = new WebSocket(this.url)
     this.autoReconnect = true
 
     this.ws.onopen = () => {
-      console.log('connected')
       this.toast?.success(`Connected to ${this.label}!`)
       this.isConnected = true
       if (this.onConnectionChange)
@@ -152,7 +150,6 @@ export class Session {
     }
 
     this.ws.onclose = () => {
-      console.log('disconnected')
       this.isConnected = false
       if (this.onConnectionChange)
         this.onConnectionChange(this.isConnected)
@@ -161,7 +158,6 @@ export class Session {
         this.retryTimeout = setTimeout(() => {
           // skip if we've already reconnected or deleted
           if (this !== null && this.url && !this.isConnected) {
-            console.log('reconnecting')
             this.connect()
           }
         }, this.retryInterval)
@@ -215,7 +211,14 @@ export class Session {
         this.toast?.loading(`${this.label}: ${event.data}`, { duration: 10000000 })
         return
       }
-      if (event.type in this.eventHandlers) {
+      if (event.type == "_DOWNLOAD") {
+        // decode the base64 data and download it
+        const { filename, data } = event.data
+        const decodedData = atob(data) // Decode the base64 data
+        const blob = new Blob([decodedData], { type: 'application/octet-stream' })
+        fileDownload(blob, filename)
+      }
+      else if (event.type in this.eventHandlers) {
         this.eventHandlers[event.type](event.data)
       }
       else {

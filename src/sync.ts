@@ -104,7 +104,6 @@ export function useSyncedReducer<S>(
           createEffect.push((patch: any[]) => () => {
             if (patch.length > 0) {
               //convert "Immer" patches to standard json patches
-              console.log("syncing", patch)
               patch.forEach((p) => {
                 // if path is an array, join it into a string
                 if (Array.isArray(p.path)) {
