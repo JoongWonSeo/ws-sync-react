@@ -174,9 +174,9 @@ class Session {
             if (event.type == "_DOWNLOAD") {
                 // decode the base64 data and download it
                 const { filename, data } = event.data;
-                const decodedData = atob(data); // Decode the base64 data
-                const blob = new Blob([decodedData], { type: 'application/octet-stream' });
-                (0, js_file_download_1.default)(blob, filename);
+                fetch(`data:application/octet-stream;base64,${data}`)
+                    .then(res => res.blob())
+                    .then(blob => (0, js_file_download_1.default)(blob, filename));
             }
             else if (event.type in this.eventHandlers) {
                 this.eventHandlers[event.type](event.data);
