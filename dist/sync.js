@@ -30,6 +30,9 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
     const cancelTask = (task) => {
         session === null || session === void 0 ? void 0 : session.send(taskCancelEvent(key), task);
     };
+    const sendBinary = (action, data) => {
+        session === null || session === void 0 ? void 0 : session.sendBinary(actionEvent(key), action, data);
+    };
     // Dynamically create setters and syncers for each attribute
     const setters = (0, react_1.useMemo)(() => Object.keys(initialState).reduce((acc, attr) => {
         const upper = attr.charAt(0).toUpperCase() + attr.slice(1);
@@ -135,7 +138,8 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
     // expose the state with setters and syncers
     const stateWithSync = Object.assign(Object.assign(Object.assign({}, state), setters), { sendAction,
         startTask,
-        cancelTask });
+        cancelTask,
+        sendBinary });
     return [stateWithSync, dispatch];
 }
 exports.useSyncedReducer = useSyncedReducer;

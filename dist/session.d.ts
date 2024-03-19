@@ -23,6 +23,7 @@ export declare class Session {
     private eventHandlers;
     private initHandlers;
     private binaryHandler;
+    private binData;
     private retryTimeout;
     private autoReconnect;
     constructor(url: string, label?: string, toast?: any, minRetryInterval?: number, maxRetryInterval?: number);
@@ -33,6 +34,7 @@ export declare class Session {
     registerBinary(callback: (data: any) => void): void;
     deregisterBinary(): void;
     send(event: string, data: any): void;
+    sendBinary(event: string, metadata: any, data: ArrayBuffer): void;
     connect(): () => void;
     disconnect(): void;
     handleReceiveEvent(e: MessageEvent): void;

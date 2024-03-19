@@ -74,6 +74,7 @@ export class Session {
   private eventHandlers: { [event: string]: (data: any) => void } = {};
   private initHandlers: { [key: string]: (() => void) } = {};
   private binaryHandler: ((data: any) => void) | null = null;
+  private binData: any | null = null; // metadata for the next binary message
   private retryTimeout: ReturnType<typeof setTimeout> | null = null; // scheduled retry
   private autoReconnect: boolean = true;
 
@@ -134,6 +135,22 @@ export class Session {
       type: event,
       data: data,
     }))
+  }
+
+  sendBinary(event: string, metadata: any, data: ArrayBuffer) {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      this.toast?.error(`${this.label}: Sending while not connected!`)
+      return
+    }
+
+    this.ws?.send(JSON.stringify({
+      type: "_BIN_META",
+      data: {
+        type: event,
+        metadata: metadata,
+      },
+    }))
+    this.ws?.send(data)
   }
 
   connect() {
@@ -211,12 +228,18 @@ export class Session {
         this.toast?.loading(`${this.label}: ${event.data}`, { duration: 10000000 })
         return
       }
-      if (event.type == "_DOWNLOAD") {
+      else if (event.type == "_DOWNLOAD") {
         // decode the base64 data and download it
         const { filename, data } = event.data
         fetch(`data:application/octet-stream;base64,${data}`)
           .then(res => res.blob())
           .then(blob => fileDownload(blob, filename))
+      }
+      else if (event.type == "_BIN_META") {
+        // the next message will be binary, save the metadata
+        if (this.binData !== null)
+          console.log(`overwriting bytes metadata`)
+        this.binData = event.data
       }
       else if (event.type in this.eventHandlers) {
         this.eventHandlers[event.type](event.data)
@@ -227,7 +250,13 @@ export class Session {
     }
     else {
       // binary message
-      if (this.binaryHandler !== null)
+      if (this.binData !== null) {
+        if (this.binData.type in this.eventHandlers)
+          this.eventHandlers[this.binData.type]({ data: e.data, ...this.binData.metadata })
+        else
+          console.log(`no handler for binary event: ${this.binData.type}`)
+      }
+      else if (this.binaryHandler !== null)
         this.binaryHandler(e.data)
       else
         console.log(`unhandled binary message`)

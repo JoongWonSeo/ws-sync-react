@@ -56,6 +56,10 @@ export function useSyncedReducer<S>(
   const cancelTask = (task: TaskCancel) => {
     session?.send(taskCancelEvent(key), task)
   }
+  const sendBinary = (action: Action, data: ArrayBuffer) => {
+    session?.sendBinary(actionEvent(key), action, data)
+  }
+
 
   // Dynamically create setters and syncers for each attribute
   const setters = useMemo(
@@ -180,6 +184,7 @@ export function useSyncedReducer<S>(
     sendAction,
     startTask,
     cancelTask,
+    sendBinary,
   }
 
   return [stateWithSync, dispatch]
