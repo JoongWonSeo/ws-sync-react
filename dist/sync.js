@@ -15,6 +15,9 @@ const taskCancelEvent = (key) => "_TASK_CANCEL:" + key;
 function useSyncedReducer(key, syncedReducer, initialState, overrideSession = null, sendOnInit = false) {
     const session = overrideSession !== null && overrideSession !== void 0 ? overrideSession : (0, react_1.useContext)(session_1.DefaultSessionContext);
     // Syncing: Local -> Remote
+    const fetchRemoteState = () => {
+        session === null || session === void 0 ? void 0 : session.send(getEvent(key), {});
+    };
     const sendState = (newState) => {
         session === null || session === void 0 ? void 0 : session.send(setEvent(key), newState);
     };
@@ -136,7 +139,8 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
         };
     }, [session, key]);
     // expose the state with setters and syncers
-    const stateWithSync = Object.assign(Object.assign(Object.assign({}, state), setters), { sendAction,
+    const stateWithSync = Object.assign(Object.assign(Object.assign({}, state), setters), { fetchRemoteState, // explicitly fetch the entire state from remote
+        sendAction,
         startTask,
         cancelTask,
         sendBinary });

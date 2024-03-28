@@ -41,6 +41,9 @@ export function useSyncedReducer<S>(
   const session = overrideSession ?? useContext(DefaultSessionContext)
 
   // Syncing: Local -> Remote
+  const fetchRemoteState = () => {
+    session?.send(getEvent(key), {})
+  }
   const sendState = (newState: S) => {
     session?.send(setEvent(key), newState)
   }
@@ -181,6 +184,7 @@ export function useSyncedReducer<S>(
   const stateWithSync = {
     ...state,
     ...setters,
+    fetchRemoteState, // explicitly fetch the entire state from remote
     sendAction,
     startTask,
     cancelTask,
