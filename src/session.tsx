@@ -11,13 +11,13 @@ interface SessionProviderProps {
   url: string
   label?: string
   children: React.ReactNode
-  context: Context<Session | null>
+  context?: Context<Session | null>
   autoconnect?: boolean
   wsAuth?: boolean
   toast?: any
 }
 
-export const SessionProvider = ({ url, label, toast, children, context, autoconnect, wsAuth }: SessionProviderProps) => {
+export const SessionProvider = ({ url, label, toast, children, context = DefaultSessionContext, autoconnect = false, wsAuth = false }: SessionProviderProps) => {
   const session = useMemo(() => new Session(url, label, toast), [url])
 
   if (wsAuth) {

@@ -10,7 +10,7 @@ const js_file_download_1 = __importDefault(require("js-file-download"));
 const react_1 = require("react");
 const uuid_1 = require("uuid");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
-const SessionProvider = ({ url, label, toast, children, context, autoconnect, wsAuth }) => {
+const SessionProvider = ({ url, label, toast, children, context = exports.DefaultSessionContext, autoconnect = false, wsAuth = false }) => {
     const session = (0, react_1.useMemo)(() => new Session(url, label, toast), [url]);
     if (wsAuth) {
         const [userId, setUserId] = (0, usehooks_1.useLocalStorage)(`_USER_ID`, null);

@@ -4,7 +4,7 @@ interface SessionProviderProps {
     url: string;
     label?: string;
     children: React.ReactNode;
-    context: Context<Session | null>;
+    context?: Context<Session | null>;
     autoconnect?: boolean;
     wsAuth?: boolean;
     toast?: any;
