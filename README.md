@@ -57,17 +57,30 @@ export default App;
 Where you'd normally use `useState`, use `useSynced` instead, if you want the state to be synced with the server. The first argument is the key to use to identify the state (should match the backend key), and the second argument is the initial state, which is used before the synced state is received (but also useful to easily understand the shape of the state).
 
 The object returned by `useSynced` has:
+
 - **All the properties** as defined by the initial state, but then overwritten by the synced state from the server. Therefore, you should ensure that the backend sends all the properties that you expect.
+
 - For each property `myProp`:
     - a **setter function `setMyProp(x)`**, which locally updates the property, exactly like with `useState`, and
     - a **syncer function `syncMyProp(x)`**, which locally updates the property **and sends the update to the server**, such that it is automatically updated in the backend as well.
+
 - Some additional functions that are always available:
-    - `sendAction({type: "MY_ACTION", my_arg: "my_values", arg2: 123})`: essentially like calling a function on the backend, with the matching action key and keyword arguments. The backend should have a corresponding action handler for this action key.  
+    - `sendAction({type: "MY_ACTION", my_arg: "my_values", arg2: 123})`:  
+    Essentially like calling a function on the backend, with the matching action key and keyword arguments. The backend should have a corresponding action handler for this action key.  
     An action is "blocking the backend", i.e. the backend will not process any other actions until this action is completed. This guarantees a sequential order of actions. However, *sending an action* is not blocking the frontend, i.e. this function call **does not wait for the action to be completed**.
-    - `startTask({type: "MY_TASK", my_arg: "my_values", arg2: 123})`: similar to actions, but for long-running tasks, i.e. it's non-blocking for the backend and cancellable.
-    - `cancelTask({type: "MY_TASK"})`: cancel a task that was started with `startTask`.
-    - `sendBinary({type: "MY_ACTION", my_arg: 123}, data)`: like `sendAction`, but sends binary data alongside the action. The backend should have a corresponding action handler with a `data` parameter.
-    - `fetchRemoteState()`: explicitly request a fetch of the (entire) backend state. You rarely have to manually call this, as the backend will (by default) automatically send the state when the connection is established[^1].
+
+    - `startTask({type: "MY_TASK", my_arg: "my_values", arg2: 123})`:  
+    Similar to actions, but for long-running tasks, i.e. it's non-blocking for the backend and cancellable.
+
+    - `cancelTask({type: "MY_TASK"})`:  
+    Cancel a task that was started with `startTask`.
+
+    - `sendBinary({type: "MY_ACTION", my_arg: 123}, data)`:  
+    Like `sendAction`, but sends binary data alongside the action. The backend should have a corresponding action handler with a `data` parameter.
+
+    - `fetchRemoteState()`:  
+    Explicitly request a fetch of the (entire) backend state. You rarely have to manually call this, as the backend will (by default) automatically send the state when the connection is established[^1].
+    
 - Finally, if the backend opted to expose it, a list of currently running tasks (their keys) is available as `runningTasks`. If using this, don't forget to add `runningTasks` to the initial state as well.
 
 [^1]: One case where you need this is when this component is mounted after the connection is established.
