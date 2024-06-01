@@ -255,6 +255,8 @@ export class Session {
           this.eventHandlers[this.binData.type]({ data: e.data, ...this.binData.metadata })
         else
           console.log(`no handler for binary event: ${this.binData.type}`)
+        // clear the metadata since we've handled it
+        this.binData = null
       }
       else if (this.binaryHandler !== null)
         this.binaryHandler(e.data)
