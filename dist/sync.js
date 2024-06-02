@@ -15,43 +15,27 @@ const taskCancelEvent = (key) => "_TASK_CANCEL:" + key;
 function useSyncedReducer(key, syncedReducer, initialState, overrideSession = null, sendOnInit = false) {
     const session = overrideSession !== null && overrideSession !== void 0 ? overrideSession : (0, react_1.useContext)(session_1.DefaultSessionContext);
     // Syncing: Local -> Remote
-    const fetchRemoteState = () => {
+    const fetchRemoteState = (0, react_1.useCallback)(() => {
         session === null || session === void 0 ? void 0 : session.send(getEvent(key), {});
-    };
-    const sendState = (newState) => {
+    }, [session, key]);
+    const sendState = (0, react_1.useCallback)((newState) => {
         session === null || session === void 0 ? void 0 : session.send(setEvent(key), newState);
-    };
-    const sendPatch = (patch) => {
+    }, [session, key]);
+    const sendPatch = (0, react_1.useCallback)((patch) => {
         session === null || session === void 0 ? void 0 : session.send(patchEvent(key), patch);
-    };
-    const sendAction = (action) => {
+    }, [session, key]);
+    const sendAction = (0, react_1.useCallback)((action) => {
         session === null || session === void 0 ? void 0 : session.send(actionEvent(key), action);
-    };
-    const startTask = (task) => {
+    }, [session, key]);
+    const startTask = (0, react_1.useCallback)((task) => {
         session === null || session === void 0 ? void 0 : session.send(taskStartEvent(key), task);
-    };
-    const cancelTask = (task) => {
+    }, [session, key]);
+    const cancelTask = (0, react_1.useCallback)((task) => {
         session === null || session === void 0 ? void 0 : session.send(taskCancelEvent(key), task);
-    };
-    const sendBinary = (action, data) => {
+    }, [session, key]);
+    const sendBinary = (0, react_1.useCallback)((action, data) => {
         session === null || session === void 0 ? void 0 : session.sendBinary(actionEvent(key), action, data);
-    };
-    // Dynamically create setters and syncers for each attribute
-    const setters = (0, react_1.useMemo)(() => Object.keys(initialState).reduce((acc, attr) => {
-        const upper = attr.charAt(0).toUpperCase() + attr.slice(1);
-        const setState = (newValue) => {
-            const patch = [{ op: "replace", path: `/${attr}`, value: newValue }];
-            patchState(patch); // local update
-        };
-        const syncState = (newValue) => {
-            const patch = [{ op: "replace", path: `/${attr}`, value: newValue }];
-            patchState(patch); // local update
-            sendPatch(patch); // sync to remote
-        };
-        acc[`set${upper}`] = setState;
-        acc[`sync${upper}`] = syncState;
-        return acc;
-    }, {}), [initialState]);
+    }, [session, key]);
     // State Management
     // reducer must be wrapped to handle the remote events, and also return a queue of side effects to perform, i.e. sync and sendAction
     const wrappedReducer = ([state, _], action) => {
@@ -101,29 +85,34 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
         }
     };
     // The underlying state holder and reducer
-    const [[state, effects], dispatch] = (0, react_1.useReducer)(wrappedReducer, [initialState, []]);
+    const [[state, effects], dispatch] = (0, react_1.useReducer)(wrappedReducer, [
+        initialState,
+        [],
+    ]);
     // Execute the side effects (after render)
     (0, react_1.useEffect)(() => {
+        if (effects.length === 0)
+            return;
         effects.forEach((f) => f());
-        // clear the effects
-        effects.splice(0, effects.length);
+        effects.splice(0, effects.length); // clear the effects
     });
     // Syncing: Remote -> Local
     // callbacks to handle remote events
-    const setState = (newState) => {
+    const setState = (0, react_1.useCallback)((newState) => {
         dispatch({ type: setEvent(key), data: newState });
-    };
-    const patchState = (patch) => {
+    }, [key]);
+    const patchState = (0, react_1.useCallback)((patch) => {
         dispatch({ type: patchEvent(key), data: patch });
-    };
-    const actionState = (action) => {
+    }, [key]);
+    const actionState = (0, react_1.useCallback)((action) => {
         dispatch(action);
-    };
+    }, []);
     (0, react_1.useEffect)(() => {
         session === null || session === void 0 ? void 0 : session.registerEvent(getEvent(key), () => sendState(state)); //TODO: closure correct?
         session === null || session === void 0 ? void 0 : session.registerEvent(setEvent(key), setState);
         session === null || session === void 0 ? void 0 : session.registerEvent(patchEvent(key), patchState);
         session === null || session === void 0 ? void 0 : session.registerEvent(actionEvent(key), actionState);
+        // TODO: allow binary handler
         if (sendOnInit) {
             // Optionally, send the initial state or an initial action
             session === null || session === void 0 ? void 0 : session.registerInit(key, () => sendState(state));
@@ -138,12 +127,38 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
             }
         };
     }, [session, key]);
+    // Dynamically create setters and syncers for each attribute
+    const setters = (0, react_1.useMemo)(() => Object.keys(initialState).reduce((acc, attr) => {
+        const upper = attr.charAt(0).toUpperCase() + attr.slice(1);
+        const setter = (newValue) => {
+            const patch = [{ op: "replace", path: `/${attr}`, value: newValue }];
+            patchState(patch); // local update
+        };
+        const syncer = (newValue) => {
+            const patch = [{ op: "replace", path: `/${attr}`, value: newValue }];
+            patchState(patch); // local update
+            sendPatch(patch); // sync to remote
+        };
+        acc[`set${upper}`] = setter;
+        acc[`sync${upper}`] = syncer;
+        return acc;
+    }, {}), [initialState, patchState, sendPatch]);
     // expose the state with setters and syncers
-    const stateWithSync = Object.assign(Object.assign(Object.assign({}, state), setters), { fetchRemoteState, // explicitly fetch the entire state from remote
+    const stateWithSync = (0, react_1.useMemo)(() => {
+        return Object.assign(Object.assign(Object.assign({}, state), setters), { fetchRemoteState, // explicitly fetch the entire state from remote
+            sendAction,
+            startTask,
+            cancelTask,
+            sendBinary });
+    }, [
+        state,
+        setters,
+        fetchRemoteState,
         sendAction,
         startTask,
         cancelTask,
-        sendBinary });
+        sendBinary,
+    ]);
     return [stateWithSync, dispatch];
 }
 exports.useSyncedReducer = useSyncedReducer;
