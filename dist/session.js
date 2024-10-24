@@ -10,8 +10,8 @@ const js_file_download_1 = __importDefault(require("js-file-download"));
 const react_1 = require("react");
 const uuid_1 = require("uuid");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
-const SessionProvider = ({ url, label, toast, children, context = exports.DefaultSessionContext, autoconnect = false, wsAuth = false }) => {
-    const session = (0, react_1.useMemo)(() => new Session(url, label, toast), [url]);
+const SessionProvider = ({ url, label, toast, children, context = exports.DefaultSessionContext, autoconnect = false, wsAuth = false, binaryType = "blob", }) => {
+    const session = (0, react_1.useMemo)(() => new Session(url, label, toast, binaryType), [url]);
     if (wsAuth) {
         const [userId, setUserId] = (0, usehooks_1.useLocalStorage)(`_USER_ID`, null);
         const [sessionId, setSessionId] = (0, usehooks_1.useSessionStorage)(`_SESSION_ID`, null);
@@ -39,11 +39,11 @@ const SessionProvider = ({ url, label, toast, children, context = exports.Defaul
         (0, react_1.useEffect)(() => {
             return session.connect();
         }, [url]);
-    return ((0, jsx_runtime_1.jsx)(context.Provider, { value: session, children: children }));
+    return (0, jsx_runtime_1.jsx)(context.Provider, { value: session, children: children });
 };
 exports.SessionProvider = SessionProvider;
 class Session {
-    constructor(url, label = "Server", toast = null, minRetryInterval = 250, maxRetryInterval = 10000) {
+    constructor(url, label = "Server", toast = null, binaryType = "blob", minRetryInterval = 250, maxRetryInterval = 10000) {
         this.ws = null;
         this.isConnected = false;
         this.onConnectionChange = undefined;
@@ -55,10 +55,11 @@ class Session {
         this.autoReconnect = true;
         this.url = url;
         this.label = label;
+        this.toast = toast;
+        this.binaryType = binaryType;
         this.minRetryInterval = minRetryInterval;
         this.maxRetryInterval = maxRetryInterval;
         this.retryInterval = minRetryInterval;
-        this.toast = toast;
     }
     registerEvent(event, callback) {
         if (event in this.eventHandlers)
@@ -120,6 +121,7 @@ class Session {
         var _a;
         (_a = this.toast) === null || _a === void 0 ? void 0 : _a.info(`Connecting to ${this.label}...`);
         this.ws = new WebSocket(this.url);
+        this.ws.binaryType = this.binaryType;
         this.autoReconnect = true;
         this.ws.onopen = () => {
             var _a;
@@ -154,7 +156,9 @@ class Session {
             (_a = this.toast) === null || _a === void 0 ? void 0 : _a.error(`${this.label}: Socket Error: ${err}`);
             (_b = this.ws) === null || _b === void 0 ? void 0 : _b.close();
         };
-        this.ws.onmessage = (e) => { this.handleReceiveEvent(e); };
+        this.ws.onmessage = (e) => {
+            this.handleReceiveEvent(e);
+        };
         return () => {
             this.disconnect();
         };
@@ -179,20 +183,22 @@ class Session {
     }
     handleReceiveEvent(e) {
         var _a;
-        if (typeof e.data === 'string') {
+        if (typeof e.data === "string") {
             // json message
             const event = JSON.parse(e.data);
             if (event.type == "_DISCONNECT") {
                 this.disconnect();
-                (_a = this.toast) === null || _a === void 0 ? void 0 : _a.loading(`${this.label}: ${event.data}`, { duration: 10000000 });
+                (_a = this.toast) === null || _a === void 0 ? void 0 : _a.loading(`${this.label}: ${event.data}`, {
+                    duration: 10000000,
+                });
                 return;
             }
             else if (event.type == "_DOWNLOAD") {
                 // decode the base64 data and download it
                 const { filename, data } = event.data;
                 fetch(`data:application/octet-stream;base64,${data}`)
-                    .then(res => res.blob())
-                    .then(blob => (0, js_file_download_1.default)(blob, filename));
+                    .then((res) => res.blob())
+                    .then((blob) => (0, js_file_download_1.default)(blob, filename));
             }
             else if (event.type == "_BIN_META") {
                 // the next message will be binary, save the metadata

@@ -1,4 +1,4 @@
-import { Context } from 'react';
+import { Context } from "react";
 export declare const DefaultSessionContext: Context<Session | null>;
 interface SessionProviderProps {
     url: string;
@@ -8,14 +8,16 @@ interface SessionProviderProps {
     autoconnect?: boolean;
     wsAuth?: boolean;
     toast?: any;
+    binaryType: BinaryType;
 }
-export declare const SessionProvider: ({ url, label, toast, children, context, autoconnect, wsAuth }: SessionProviderProps) => import("react/jsx-runtime").JSX.Element;
+export declare const SessionProvider: ({ url, label, toast, children, context, autoconnect, wsAuth, binaryType, }: SessionProviderProps) => import("react/jsx-runtime").JSX.Element;
 export declare class Session {
     url: string;
     label: string;
     ws: WebSocket | null;
+    binaryType: BinaryType;
     isConnected: boolean;
-    onConnectionChange?: ((arg0: boolean) => void);
+    onConnectionChange?: (arg0: boolean) => void;
     minRetryInterval: number;
     maxRetryInterval: number;
     retryInterval: number;
@@ -26,7 +28,7 @@ export declare class Session {
     private binData;
     private retryTimeout;
     private autoReconnect;
-    constructor(url: string, label?: string, toast?: any, minRetryInterval?: number, maxRetryInterval?: number);
+    constructor(url: string, label?: string, toast?: any, binaryType?: BinaryType, minRetryInterval?: number, maxRetryInterval?: number);
     registerEvent(event: string, callback: (data: any) => void): void;
     deregisterEvent(event: string): void;
     registerInit(key: string, callback: () => void): void;

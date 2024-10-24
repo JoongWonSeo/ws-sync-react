@@ -13,6 +13,7 @@ interface SessionProviderProps {
   autoconnect?: boolean;
   wsAuth?: boolean;
   toast?: any;
+  binaryType: BinaryType;
 }
 
 export const SessionProvider = ({
@@ -23,8 +24,12 @@ export const SessionProvider = ({
   context = DefaultSessionContext,
   autoconnect = false,
   wsAuth = false,
+  binaryType = "blob",
 }: SessionProviderProps) => {
-  const session = useMemo(() => new Session(url, label, toast), [url]);
+  const session = useMemo(
+    () => new Session(url, label, toast, binaryType),
+    [url]
+  );
 
   if (wsAuth) {
     const [userId, setUserId] = useLocalStorage<string | null>(
@@ -71,6 +76,7 @@ export class Session {
   url: string;
   label: string;
   ws: WebSocket | null = null;
+  binaryType: BinaryType;
 
   isConnected: boolean = false;
   onConnectionChange?: (arg0: boolean) => void = undefined;
@@ -90,15 +96,17 @@ export class Session {
     url: string,
     label: string = "Server",
     toast: any = null,
+    binaryType: BinaryType = "blob",
     minRetryInterval: number = 250,
     maxRetryInterval: number = 10000
   ) {
     this.url = url;
     this.label = label;
+    this.toast = toast;
+    this.binaryType = binaryType;
     this.minRetryInterval = minRetryInterval;
     this.maxRetryInterval = maxRetryInterval;
     this.retryInterval = minRetryInterval;
-    this.toast = toast;
   }
 
   registerEvent(event: string, callback: (data: any) => void) {
@@ -168,6 +176,7 @@ export class Session {
   connect() {
     this.toast?.info(`Connecting to ${this.label}...`);
     this.ws = new WebSocket(this.url);
+    this.ws.binaryType = this.binaryType;
     this.autoReconnect = true;
 
     this.ws.onopen = () => {
