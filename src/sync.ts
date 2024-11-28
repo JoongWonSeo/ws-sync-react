@@ -35,13 +35,21 @@ export type SyncedReducer<S> = (
   delegate: Delegate
 ) => S | void;
 
+type StateWithSync<S> = S & {
+  fetchRemoteState: () => void;
+  sendAction: (action: Action) => void;
+  startTask: (task: TaskStart) => void;
+  cancelTask: (task: TaskCancel) => void;
+  sendBinary: (action: Action, data: ArrayBuffer) => void;
+};
+
 export function useSyncedReducer<S>(
   key: string,
   syncedReducer: SyncedReducer<S> | undefined,
   initialState: S,
   overrideSession: Session | null = null,
   sendOnInit = false
-): [any, (action: Action) => void] {
+): [StateWithSync<S>, (action: Action) => void] {
   const session = overrideSession ?? useContext(DefaultSessionContext);
 
   // Syncing: Local -> Remote
@@ -221,8 +229,8 @@ export function useSyncedReducer<S>(
   );
 
   // expose the state with setters and syncers
-  const stateWithSync = useMemo(() => {
-    return {
+  const stateWithSync = useMemo<StateWithSync<S>>(
+    () => ({
       ...state,
       ...setters,
       fetchRemoteState, // explicitly fetch the entire state from remote
@@ -230,16 +238,17 @@ export function useSyncedReducer<S>(
       startTask,
       cancelTask,
       sendBinary,
-    };
-  }, [
-    state,
-    setters,
-    fetchRemoteState,
-    sendAction,
-    startTask,
-    cancelTask,
-    sendBinary,
-  ]);
+    }),
+    [
+      state,
+      setters,
+      fetchRemoteState,
+      sendAction,
+      startTask,
+      cancelTask,
+      sendBinary,
+    ]
+  );
 
   return [stateWithSync, dispatch];
 }

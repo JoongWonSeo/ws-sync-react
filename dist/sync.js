@@ -144,13 +144,11 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
         return acc;
     }, {}), [initialState, patchState, sendPatch]);
     // expose the state with setters and syncers
-    const stateWithSync = (0, react_1.useMemo)(() => {
-        return Object.assign(Object.assign(Object.assign({}, state), setters), { fetchRemoteState, // explicitly fetch the entire state from remote
-            sendAction,
-            startTask,
-            cancelTask,
-            sendBinary });
-    }, [
+    const stateWithSync = (0, react_1.useMemo)(() => (Object.assign(Object.assign(Object.assign({}, state), setters), { fetchRemoteState, // explicitly fetch the entire state from remote
+        sendAction,
+        startTask,
+        cancelTask,
+        sendBinary })), [
         state,
         setters,
         fetchRemoteState,
