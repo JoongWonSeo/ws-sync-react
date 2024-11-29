@@ -12,19 +12,21 @@ const uuid_1 = require("uuid");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
 const SessionProvider = ({ url, label, toast, children, context = exports.DefaultSessionContext, autoconnect = false, wsAuth = false, binaryType = "blob", }) => {
     // Initialize session with useState and lazy initializer
-    const [session, setSession] = (0, react_1.useState)(() => new Session(url, label, toast, binaryType));
+    const [session, setSession] = (0, react_1.useState)(
+    // () => new Session(url, label, toast, binaryType)
+    null);
     (0, react_1.useEffect)(() => {
         // When the URL changes, create a new session and update state
         const newSession = new Session(url, label, toast, binaryType);
         setSession(newSession);
         return () => {
             // Disconnect the old session
-            session.disconnect();
+            session === null || session === void 0 ? void 0 : session.disconnect();
         };
     }, [url]);
     (0, react_1.useEffect)(() => {
         if (autoconnect) {
-            return session.connect(); // returns the disconnect cleanup function
+            return session === null || session === void 0 ? void 0 : session.connect(); // returns the disconnect cleanup function
         }
     }, [autoconnect, session]);
     // Handle wsAuth functionality

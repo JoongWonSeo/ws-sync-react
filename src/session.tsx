@@ -34,8 +34,9 @@ export const SessionProvider = ({
   binaryType = "blob",
 }: SessionProviderProps) => {
   // Initialize session with useState and lazy initializer
-  const [session, setSession] = useState(
-    () => new Session(url, label, toast, binaryType)
+  const [session, setSession] = useState<Session | null>(
+    // () => new Session(url, label, toast, binaryType)
+    null
   );
 
   useEffect(() => {
@@ -45,13 +46,13 @@ export const SessionProvider = ({
 
     return () => {
       // Disconnect the old session
-      session.disconnect();
+      session?.disconnect();
     };
   }, [url]);
 
   useEffect(() => {
     if (autoconnect) {
-      return session.connect(); // returns the disconnect cleanup function
+      return session?.connect(); // returns the disconnect cleanup function
     }
   }, [autoconnect, session]);
 
