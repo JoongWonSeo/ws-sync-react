@@ -30,6 +30,6 @@ const useRemoteToast = (session, toast, prefix = "") => {
             }
         });
         return () => session === null || session === void 0 ? void 0 : session.deregisterEvent("_TOAST");
-    }, []);
+    }, [session, toast, prefix]);
 };
 exports.useRemoteToast = useRemoteToast;

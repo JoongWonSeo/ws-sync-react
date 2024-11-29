@@ -33,5 +33,5 @@ export const useRemoteToast = (
       }
     });
     return () => session?.deregisterEvent("_TOAST");
-  }, []);
+  }, [session, toast, prefix]);
 };
