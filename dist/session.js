@@ -11,34 +11,63 @@ const react_1 = require("react");
 const uuid_1 = require("uuid");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
 const SessionProvider = ({ url, label, toast, children, context = exports.DefaultSessionContext, autoconnect = false, wsAuth = false, binaryType = "blob", }) => {
-    const session = (0, react_1.useMemo)(() => new Session(url, label, toast, binaryType), [url]);
+    const sessionRef = (0, react_1.useRef)(null);
+    (0, react_1.useEffect)(() => {
+        // If session doesn't exist or URL has changed, create a new Session
+        if (!sessionRef.current || sessionRef.current.url !== url) {
+            // Clean up the old session
+            if (sessionRef.current) {
+                console.log("Cleaning up old session");
+                sessionRef.current.disconnect();
+            }
+            // Create a new session
+            console.log("Creating new session");
+            sessionRef.current = new Session(url, label, toast, binaryType);
+        }
+        // Handle autoconnect
+        if (autoconnect) {
+            console.log("Autoconnecting to session");
+            return sessionRef.current.connect(); // returns disconnect cleanup
+        }
+    }, [url, autoconnect]);
+    // update sessionRef.current with the latest values
+    (0, react_1.useEffect)(() => {
+        if (!sessionRef.current)
+            return;
+        if (label)
+            sessionRef.current.label = label;
+        sessionRef.current.toast = toast;
+        sessionRef.current.binaryType = binaryType;
+    }, [label, toast, binaryType]);
+    const session = sessionRef.current;
+    // Handle wsAuth functionality
     if (wsAuth) {
-        const [userId, setUserId] = (0, usehooks_1.useLocalStorage)(`_USER_ID`, null);
-        const [sessionId, setSessionId] = (0, usehooks_1.useSessionStorage)(`_SESSION_ID`, null);
+        const [userId, setUserId] = (0, usehooks_1.useLocalStorage)("_USER_ID", null);
+        const [sessionId, setSessionId] = (0, usehooks_1.useSessionStorage)("_SESSION_ID", null);
         (0, react_1.useEffect)(() => {
-            session === null || session === void 0 ? void 0 : session.registerEvent("_REQUEST_USER_SESSION", () => {
-                let u = userId, s = sessionId;
+            if (!session)
+                return;
+            const handleRequestUserSession = () => {
+                let u = userId;
+                let s = sessionId;
                 if (userId === null) {
                     u = (0, uuid_1.v4)();
                     setUserId(u);
-                    console.log("generated new user id", u);
+                    console.log("Generated new user ID:", u);
                 }
                 if (sessionId === null) {
                     s = (0, uuid_1.v4)();
                     setSessionId(s);
-                    console.log("generated new session id", s);
+                    console.log("Generated new session ID:", s);
                 }
                 session.send("_USER_SESSION", { user: u, session: s });
-            });
-            return () => {
-                session === null || session === void 0 ? void 0 : session.deregisterEvent("_REQUEST_USER_SESSION");
             };
-        }, [url]);
+            session.registerEvent("_REQUEST_USER_SESSION", handleRequestUserSession);
+            return () => {
+                session.deregisterEvent("_REQUEST_USER_SESSION");
+            };
+        }, [session, userId, sessionId]);
     }
-    if (autoconnect)
-        (0, react_1.useEffect)(() => {
-            return session.connect();
-        }, [url]);
     return (0, jsx_runtime_1.jsx)(context.Provider, { value: session, children: children });
 };
 exports.SessionProvider = SessionProvider;
