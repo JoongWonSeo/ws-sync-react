@@ -8,7 +8,6 @@ export const useRemoteToast = (
   prefix: string = ""
 ) => {
   useEffect(() => {
-    console.log("registering remote toast to session", session);
     session?.registerEvent("_TOAST", ({ message, type }) => {
       switch (type) {
         case "default":
@@ -34,7 +33,6 @@ export const useRemoteToast = (
       }
     });
     return () => {
-      if (session) console.log("deregistering remote toast from session");
       session?.deregisterEvent("_TOAST");
     };
   }, [session, toast, prefix]);
