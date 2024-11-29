@@ -8,7 +8,7 @@ export const useRemoteToast = (
   prefix: string = ""
 ) => {
   useEffect(() => {
-    if (session) console.log("registering remote toast to session");
+    console.log("registering remote toast to session", session);
     session?.registerEvent("_TOAST", ({ message, type }) => {
       switch (type) {
         case "default":
