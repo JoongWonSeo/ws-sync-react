@@ -1,6 +1,13 @@
 import { useLocalStorage, useSessionStorage } from "@uidotdev/usehooks";
 import fileDownload from "js-file-download";
-import { createContext, useMemo, useEffect, Context, useRef } from "react";
+import {
+  createContext,
+  useMemo,
+  useEffect,
+  Context,
+  useRef,
+  useState,
+} from "react";
 import { v4 as uuid } from "uuid";
 
 export const DefaultSessionContext = createContext<Session | null>(null);
@@ -26,37 +33,27 @@ export const SessionProvider = ({
   wsAuth = false,
   binaryType = "blob",
 }: SessionProviderProps) => {
-  const sessionRef = useRef<Session | null>(null);
+  // Initialize session with useState and lazy initializer
+  const [session, setSession] = useState(
+    () => new Session(url, label, toast, binaryType)
+  );
 
   useEffect(() => {
-    // If session doesn't exist or URL has changed, create a new Session
-    if (!sessionRef.current || sessionRef.current.url !== url) {
-      // Clean up the old session
-      if (sessionRef.current) {
-        console.log("Cleaning up old session");
-        sessionRef.current.disconnect();
-      }
-      // Create a new session
-      console.log("Creating new session");
-      sessionRef.current = new Session(url, label, toast, binaryType);
-    }
+    // When the URL changes, create a new session and update state
+    const newSession = new Session(url, label, toast, binaryType);
+    setSession(newSession);
 
-    // Handle autoconnect
+    return () => {
+      // Disconnect the old session
+      session.disconnect();
+    };
+  }, [url]);
+
+  useEffect(() => {
     if (autoconnect) {
-      console.log("Autoconnecting to session");
-      return sessionRef.current.connect(); // returns disconnect cleanup
+      return session.connect(); // returns the disconnect cleanup function
     }
-  }, [url, autoconnect]);
-
-  // update sessionRef.current with the latest values
-  useEffect(() => {
-    if (!sessionRef.current) return;
-    if (label) sessionRef.current.label = label;
-    sessionRef.current.toast = toast;
-    sessionRef.current.binaryType = binaryType;
-  }, [label, toast, binaryType]);
-
-  const session = sessionRef.current;
+  }, [autoconnect, session]);
 
   // Handle wsAuth functionality
   if (wsAuth) {
@@ -97,7 +94,6 @@ export const SessionProvider = ({
       };
     }, [session, userId, sessionId]);
   }
-
   return <context.Provider value={session}>{children}</context.Provider>;
 };
 

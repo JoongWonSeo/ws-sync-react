@@ -11,35 +11,22 @@ const react_1 = require("react");
 const uuid_1 = require("uuid");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
 const SessionProvider = ({ url, label, toast, children, context = exports.DefaultSessionContext, autoconnect = false, wsAuth = false, binaryType = "blob", }) => {
-    const sessionRef = (0, react_1.useRef)(null);
+    // Initialize session with useState and lazy initializer
+    const [session, setSession] = (0, react_1.useState)(() => new Session(url, label, toast, binaryType));
     (0, react_1.useEffect)(() => {
-        // If session doesn't exist or URL has changed, create a new Session
-        if (!sessionRef.current || sessionRef.current.url !== url) {
-            // Clean up the old session
-            if (sessionRef.current) {
-                console.log("Cleaning up old session");
-                sessionRef.current.disconnect();
-            }
-            // Create a new session
-            console.log("Creating new session");
-            sessionRef.current = new Session(url, label, toast, binaryType);
-        }
-        // Handle autoconnect
+        // When the URL changes, create a new session and update state
+        const newSession = new Session(url, label, toast, binaryType);
+        setSession(newSession);
+        return () => {
+            // Disconnect the old session
+            session.disconnect();
+        };
+    }, [url]);
+    (0, react_1.useEffect)(() => {
         if (autoconnect) {
-            console.log("Autoconnecting to session");
-            return sessionRef.current.connect(); // returns disconnect cleanup
+            return session.connect(); // returns the disconnect cleanup function
         }
-    }, [url, autoconnect]);
-    // update sessionRef.current with the latest values
-    (0, react_1.useEffect)(() => {
-        if (!sessionRef.current)
-            return;
-        if (label)
-            sessionRef.current.label = label;
-        sessionRef.current.toast = toast;
-        sessionRef.current.binaryType = binaryType;
-    }, [label, toast, binaryType]);
-    const session = sessionRef.current;
+    }, [autoconnect, session]);
     // Handle wsAuth functionality
     if (wsAuth) {
         const [userId, setUserId] = (0, usehooks_1.useLocalStorage)("_USER_ID", null);
