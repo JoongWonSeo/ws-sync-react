@@ -33,11 +33,8 @@ export const SessionProvider = ({
   wsAuth = false,
   binaryType = "blob",
 }: SessionProviderProps) => {
-  // Initialize session with useState and lazy initializer
-  const [session, setSession] = useState<Session | null>(
-    // () => new Session(url, label, toast, binaryType)
-    null
-  );
+  // Initialize session
+  const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
     // When the URL changes, create a new session and update state

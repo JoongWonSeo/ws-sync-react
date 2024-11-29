@@ -11,10 +11,8 @@ const react_1 = require("react");
 const uuid_1 = require("uuid");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
 const SessionProvider = ({ url, label, toast, children, context = exports.DefaultSessionContext, autoconnect = false, wsAuth = false, binaryType = "blob", }) => {
-    // Initialize session with useState and lazy initializer
-    const [session, setSession] = (0, react_1.useState)(
-    // () => new Session(url, label, toast, binaryType)
-    null);
+    // Initialize session
+    const [session, setSession] = (0, react_1.useState)(null);
     (0, react_1.useEffect)(() => {
         // When the URL changes, create a new session and update state
         const newSession = new Session(url, label, toast, binaryType);

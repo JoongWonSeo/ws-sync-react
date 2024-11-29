@@ -5,6 +5,8 @@ const react_1 = require("react");
 // remote toast handler
 const useRemoteToast = (session, toast, prefix = "") => {
     (0, react_1.useEffect)(() => {
+        if (session)
+            console.log("registering remote toast to session");
         session === null || session === void 0 ? void 0 : session.registerEvent("_TOAST", ({ message, type }) => {
             switch (type) {
                 case "default":
@@ -29,7 +31,11 @@ const useRemoteToast = (session, toast, prefix = "") => {
                     toast(prefix + message);
             }
         });
-        return () => session === null || session === void 0 ? void 0 : session.deregisterEvent("_TOAST");
+        return () => {
+            if (session)
+                console.log("deregistering remote toast from session");
+            session === null || session === void 0 ? void 0 : session.deregisterEvent("_TOAST");
+        };
     }, [session, toast, prefix]);
 };
 exports.useRemoteToast = useRemoteToast;
