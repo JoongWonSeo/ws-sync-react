@@ -8,7 +8,7 @@ interface SessionProviderProps {
     autoconnect?: boolean;
     wsAuth?: boolean;
     toast?: any;
-    binaryType: BinaryType;
+    binaryType?: BinaryType;
 }
 export declare const SessionProvider: ({ url, label, toast, children, context, autoconnect, wsAuth, binaryType, }: SessionProviderProps) => import("react/jsx-runtime").JSX.Element;
 export declare class Session {
