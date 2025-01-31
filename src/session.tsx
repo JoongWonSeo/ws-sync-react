@@ -98,7 +98,7 @@ export const SessionProvider = ({
       if (!session) return;
 
       const handleRequestUserSession = () => {
-        console.debug(`[WS Session] Handling _REQUEST_USER_SESSION event`);
+        // console.debug(`[WS Session] Handling _REQUEST_USER_SESSION event`);
         let u = userId;
         let s = sessionId;
 
@@ -113,19 +113,13 @@ export const SessionProvider = ({
           console.info("[WS Session] Generated new session ID:", s);
         }
 
-        console.debug("[WS Session] Sending _USER_SESSION event with IDs");
+        // console.debug("[WS Session] Sending _USER_SESSION event with IDs");
         session.send("_USER_SESSION", { user: u, session: s });
       };
 
-      console.debug(
-        `[WS Session] Registering _REQUEST_USER_SESSION event handler for ${session.label}`
-      );
       session.registerEvent("_REQUEST_USER_SESSION", handleRequestUserSession);
 
       return () => {
-        console.debug(
-          `[WS Session] Deregistering _REQUEST_USER_SESSION event handler for ${session.label}`
-        );
         session.deregisterEvent("_REQUEST_USER_SESSION");
       };
     }, [session, userId, sessionId]);
@@ -162,10 +156,6 @@ export class Session {
     minRetryInterval: number = 250,
     maxRetryInterval: number = 10000
   ) {
-    console.debug(
-      `[WS Session] Constructor called with url=${url}, label=${label}, minRetryInterval=${minRetryInterval}, maxRetryInterval=${maxRetryInterval}`
-    );
-
     this.url = url;
     this.label = label;
     this.toast = toast;
@@ -173,8 +163,6 @@ export class Session {
     this.minRetryInterval = minRetryInterval;
     this.maxRetryInterval = maxRetryInterval;
     this.retryInterval = minRetryInterval;
-
-    console.debug("[WS Session] Session object created");
   }
 
   registerEvent(event: string, callback: (data: any) => void) {
@@ -184,7 +172,6 @@ export class Session {
       );
       throw new Error(`already subscribed to ${event}`);
     }
-    console.debug(`[WS Session] registerEvent for ${event}`);
     this.eventHandlers[event] = callback;
   }
 
@@ -195,7 +182,6 @@ export class Session {
       );
       throw new Error(`not subscribed to ${event}`);
     }
-    console.debug(`[WS Session] deregisterEvent for ${event}`);
     delete this.eventHandlers[event];
   }
 
@@ -206,7 +192,7 @@ export class Session {
       );
       throw new Error(`already registered`);
     }
-    console.debug(`[WS Session] registerInit for key=${key}`);
+    console.debug(`[WS Session] registeInit for key=${key}`);
     this.initHandlers[key] = callback;
   }
 
@@ -217,7 +203,6 @@ export class Session {
       );
       throw new Error(`not registered`);
     }
-    console.debug(`[WS Session] deregisterInit for key=${key}`);
     delete this.initHandlers[key];
   }
 
@@ -228,7 +213,6 @@ export class Session {
       );
       throw new Error(`already registered`);
     }
-    console.debug("[WS Session] registerBinary handler");
     this.binaryHandler = callback;
   }
 
@@ -239,12 +223,10 @@ export class Session {
       );
       throw new Error(`not registered`);
     }
-    console.debug("[WS Session] deregisterBinary handler");
     this.binaryHandler = null;
   }
 
   send(event: string, data: any) {
-    console.debug(`[WS Session] send called for event=${event}`);
     if (this.ws?.readyState !== WebSocket.OPEN) {
       console.warn(
         `[WS Session] Attempted to send event=${event} while socket not OPEN`
@@ -253,10 +235,10 @@ export class Session {
       return;
     }
 
-    console.info(
-      `[WS Session] Sending event=${event} to ${this.label} with data:`,
-      data
-    );
+    // console.info(
+    //   `[WS Session] Sending event=${event} to ${this.label} with data:`,
+    //   data
+    // );
     this.ws?.send(
       JSON.stringify({
         type: event,
@@ -266,11 +248,6 @@ export class Session {
   }
 
   sendBinary(event: string, metadata: any, data: ArrayBuffer) {
-    console.debug(
-      `[WS Session] sendBinary called for event=${event}, metadata=`,
-      metadata
-    );
-
     if (this.ws?.readyState !== WebSocket.OPEN) {
       console.warn(
         `[WS Session] Attempted to sendBinary event=${event} while socket not OPEN`
@@ -279,10 +256,10 @@ export class Session {
       return;
     }
 
-    console.info(
-      `[WS Session] Sending binary event=${event} to ${this.label}, metadata=`,
-      metadata
-    );
+    // console.info(
+    //   `[WS Session] Sending binary event=${event} to ${this.label}, metadata=`,
+    //   metadata
+    // );
     this.ws?.send(
       JSON.stringify({
         type: "_BIN_META",
@@ -293,12 +270,11 @@ export class Session {
       })
     );
 
-    console.debug(`[WS Session] Sending raw binary data for event=${event}`);
     this.ws?.send(data);
   }
 
   connect() {
-    console.info(`[WS Session] Connecting to ${this.label} at ${this.url}`);
+    // console.info(`[WS Session] Connecting to ${this.label} at ${this.url}`);
     this.toast?.info(`Connecting to ${this.label}...`);
 
     this.ws = new WebSocket(this.url);
@@ -306,7 +282,7 @@ export class Session {
     this.autoReconnect = true;
 
     this.ws.onopen = () => {
-      console.info(`[WS Session] onopen - Connected to ${this.label}!`);
+      // console.info(`[WS Session] onopen - Connected to ${this.label}!`);
       this.toast?.success(`Connected to ${this.label}!`);
       this.isConnected = true;
       if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
@@ -314,7 +290,7 @@ export class Session {
     };
 
     this.ws.onclose = () => {
-      console.warn(`[WS Session] onclose - Disconnected from ${this.label}`);
+      // console.warn(`[WS Session] onclose - Disconnected from ${this.label}`);
       this.isConnected = false;
       if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
 
@@ -325,14 +301,14 @@ export class Session {
           } seconds...`
         );
 
-        console.debug(
-          `[WS Session] Scheduling reconnect in ${this.retryInterval}ms`
-        );
+        // console.debug(
+        //   `[WS Session] Scheduling reconnect in ${this.retryInterval}ms`
+        // );
 
         this.retryTimeout = setTimeout(() => {
           // skip if we've already reconnected or if the session is disposed
           if (this !== null && this.url && !this.isConnected) {
-            console.debug(`[WS Session] Reconnect attempt for ${this.label}`);
+            // console.debug(`[WS Session] Reconnect attempt for ${this.label}`);
             this.connect();
           }
         }, this.retryInterval);
@@ -353,18 +329,16 @@ export class Session {
     };
 
     this.ws.onmessage = (e) => {
-      console.debug("[WS Session] onmessage - Received message");
       this.handleReceiveEvent(e);
     };
 
     return () => {
-      console.debug(`[WS Session] Disconnect cleanup for ${this.label}`);
       this.disconnect();
     };
   }
 
   disconnect() {
-    console.info(`[WS Session] Disconnecting from ${this.label}`);
+    // console.info(`[WS Session] Disconnecting from ${this.label}`);
     this.autoReconnect = false;
     this.ws?.close();
     if (this.onConnectionChange) this.onConnectionChange(false);
@@ -378,19 +352,13 @@ export class Session {
     }
 
     if (this.retryTimeout !== null) {
-      console.debug(
-        `[WS Session] Clearing retryTimeout for ${this.label} on disconnect`
-      );
       clearTimeout(this.retryTimeout);
       this.retryTimeout = null;
     }
   }
 
   handleReceiveEvent(e: MessageEvent) {
-    console.debug("[WS Session] handleReceiveEvent triggered");
-
     if (typeof e.data === "string") {
-      console.debug("[WS Session] Received string data, attempting to parse");
       const event = JSON.parse(e.data);
 
       if (event.type === "_DISCONNECT") {
@@ -403,26 +371,17 @@ export class Session {
         });
         return;
       } else if (event.type === "_DOWNLOAD") {
-        console.info(
-          `[WS Session] Received _DOWNLOAD request from server for ${this.label}`
-        );
         const { filename, data } = event.data;
         fetch(`data:application/octet-stream;base64,${data}`)
           .then((res) => res.blob())
           .then((blob) => fileDownload(blob, filename));
       } else if (event.type === "_BIN_META") {
-        console.debug(
-          "[WS Session] Received _BIN_META for upcoming binary data"
-        );
         // the next message will be binary, save the metadata
         if (this.binData !== null) {
           console.warn("[WS Session] Overwriting existing binData metadata");
         }
         this.binData = event.data;
       } else if (event.type in this.eventHandlers) {
-        console.debug(
-          `[WS Session] Found handler for event.type=${event.type}, invoking...`
-        );
         this.eventHandlers[event.type](event.data);
       } else {
         console.warn(
@@ -430,13 +389,8 @@ export class Session {
         );
       }
     } else {
-      console.debug("[WS Session] Received binary data");
       if (this.binData !== null) {
         const { type, metadata } = this.binData;
-        console.debug(
-          `[WS Session] Handling binary data for event type=${type} with metadata=`,
-          metadata
-        );
 
         if (type in this.eventHandlers) {
           this.eventHandlers[type]({
@@ -450,9 +404,6 @@ export class Session {
         // clear the metadata since we've handled it
         this.binData = null;
       } else if (this.binaryHandler !== null) {
-        console.debug(
-          "[WS Session] Invoking binaryHandler with untagged binary data"
-        );
         this.binaryHandler(e.data);
       } else {
         console.warn(
