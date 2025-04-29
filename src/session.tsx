@@ -1,4 +1,3 @@
-import { useLocalStorage, useSessionStorage } from "@uidotdev/usehooks";
 import fileDownload from "js-file-download";
 import {
   createContext,
@@ -9,6 +8,7 @@ import {
   useState,
 } from "react";
 import { v4 as uuid } from "uuid";
+import { useLocalStorage, useSessionStorage } from "./utils/useStorage";
 
 export const DefaultSessionContext = createContext<Session | null>(null);
 
