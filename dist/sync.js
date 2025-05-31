@@ -127,22 +127,27 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
             }
         };
     }, [session, key]);
-    // Dynamically create setters and syncers for each attribute
-    const setters = (0, react_1.useMemo)(() => Object.keys(initialState).reduce((acc, attr) => {
-        const upper = attr.charAt(0).toUpperCase() + attr.slice(1);
-        const setter = (newValue) => {
-            const patch = [{ op: "replace", path: `/${attr}`, value: newValue }];
-            patchState(patch); // local update
-        };
-        const syncer = (newValue) => {
-            const patch = [{ op: "replace", path: `/${attr}`, value: newValue }];
-            patchState(patch); // local update
-            sendPatch(patch); // sync to remote
-        };
-        acc[`set${upper}`] = setter;
-        acc[`sync${upper}`] = syncer;
-        return acc;
-    }, {}), [initialState, patchState, sendPatch]);
+    // Dynamically create setters and syncers for each attribute with proper typing
+    const setters = (0, react_1.useMemo)(() => {
+        const result = {};
+        Object.keys(initialState).forEach((attr) => {
+            const attrStr = String(attr);
+            const upper = attrStr.charAt(0).toUpperCase() + attrStr.slice(1);
+            const setter = (newValue) => {
+                const patch = [{ op: "replace", path: `/${attrStr}`, value: newValue }];
+                patchState(patch); // local update
+            };
+            const syncer = (newValue) => {
+                const patch = [{ op: "replace", path: `/${attrStr}`, value: newValue }];
+                patchState(patch); // local update
+                sendPatch(patch); // sync to remote
+            };
+            // Type assertion is safe here because we're constructing the exact shape
+            result[`set${upper}`] = setter;
+            result[`sync${upper}`] = syncer;
+        });
+        return result;
+    }, [initialState, patchState, sendPatch]);
     // expose the state with setters and syncers
     const stateWithSync = (0, react_1.useMemo)(() => (Object.assign(Object.assign(Object.assign({}, state), setters), { fetchRemoteState, // explicitly fetch the entire state from remote
         sendAction,

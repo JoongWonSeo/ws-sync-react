@@ -23,7 +23,20 @@ export type TaskCancel = {
   type: string;
 };
 
-type SetterLike = (v: any) => void; // type of state setter or syncer
+// Utility types for type-safe setters and syncers
+type Capitalize<S extends string> = S extends `${infer F}${infer R}`
+  ? `${Uppercase<F>}${R}`
+  : S;
+
+// Generate setter method names: setFoo, setBar, etc.
+type SetterMethodNames<T> = {
+  [K in keyof T as `set${Capitalize<string & K>}`]: (value: T[K]) => void;
+};
+
+// Generate syncer method names: syncFoo, syncBar, etc.
+type SyncerMethodNames<T> = {
+  [K in keyof T as `sync${Capitalize<string & K>}`]: (value: T[K]) => void;
+};
 
 // sync object that can calculate the json patch and send it to remote
 export type Sync<S> = () => void;
@@ -35,15 +48,17 @@ export type SyncedReducer<S> = (
   delegate: Delegate
 ) => S | void;
 
-type StateWithSync<S> = S & {
-  fetchRemoteState: () => void;
-  sendAction: (action: Action) => void;
-  startTask: (task: TaskStart) => void;
-  cancelTask: (task: TaskCancel) => void;
-  sendBinary: (action: Action, data: ArrayBuffer) => void;
-};
+type StateWithSync<S> = S &
+  SetterMethodNames<S> &
+  SyncerMethodNames<S> & {
+    fetchRemoteState: () => void;
+    sendAction: (action: Action) => void;
+    startTask: (task: TaskStart) => void;
+    cancelTask: (task: TaskCancel) => void;
+    sendBinary: (action: Action, data: ArrayBuffer) => void;
+  };
 
-export function useSyncedReducer<S>(
+export function useSyncedReducer<S extends Record<string, any>>(
   key: string,
   syncedReducer: SyncedReducer<S> | undefined,
   initialState: S,
@@ -205,28 +220,31 @@ export function useSyncedReducer<S>(
     };
   }, [session, key]);
 
-  // Dynamically create setters and syncers for each attribute
-  const setters = useMemo(
-    () =>
-      Object.keys(initialState as object).reduce((acc, attr) => {
-        const upper = attr.charAt(0).toUpperCase() + attr.slice(1);
+  // Dynamically create setters and syncers for each attribute with proper typing
+  const setters = useMemo(() => {
+    const result = {} as SetterMethodNames<S> & SyncerMethodNames<S>;
 
-        const setter = (newValue: any) => {
-          const patch = [{ op: "replace", path: `/${attr}`, value: newValue }];
-          patchState(patch); // local update
-        };
-        const syncer = (newValue: any) => {
-          const patch = [{ op: "replace", path: `/${attr}`, value: newValue }];
-          patchState(patch); // local update
-          sendPatch(patch); // sync to remote
-        };
+    (Object.keys(initialState) as Array<keyof S>).forEach((attr) => {
+      const attrStr = String(attr);
+      const upper = attrStr.charAt(0).toUpperCase() + attrStr.slice(1);
 
-        acc[`set${upper}`] = setter;
-        acc[`sync${upper}`] = syncer;
-        return acc;
-      }, {} as Record<string, SetterLike>),
-    [initialState, patchState, sendPatch]
-  );
+      const setter = (newValue: S[typeof attr]) => {
+        const patch = [{ op: "replace", path: `/${attrStr}`, value: newValue }];
+        patchState(patch); // local update
+      };
+      const syncer = (newValue: S[typeof attr]) => {
+        const patch = [{ op: "replace", path: `/${attrStr}`, value: newValue }];
+        patchState(patch); // local update
+        sendPatch(patch); // sync to remote
+      };
+
+      // Type assertion is safe here because we're constructing the exact shape
+      (result as any)[`set${upper}`] = setter;
+      (result as any)[`sync${upper}`] = syncer;
+    });
+
+    return result;
+  }, [initialState, patchState, sendPatch]);
 
   // expose the state with setters and syncers
   const stateWithSync = useMemo<StateWithSync<S>>(
@@ -253,12 +271,12 @@ export function useSyncedReducer<S>(
   return [stateWithSync, dispatch];
 }
 
-export function useSynced<S>(
+export function useSynced<S extends Record<string, any>>(
   key: string,
   initialState: S,
   overrideSession: Session | null = null,
   sendOnInit = false
-) {
+): StateWithSync<S> {
   const [stateWithSync, dispatch] = useSyncedReducer(
     key,
     undefined,
