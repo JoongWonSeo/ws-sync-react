@@ -5,10 +5,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Session = exports.SessionProvider = exports.DefaultSessionContext = void 0;
 const jsx_runtime_1 = require("react/jsx-runtime");
-const usehooks_1 = require("@uidotdev/usehooks");
 const js_file_download_1 = __importDefault(require("js-file-download"));
 const react_1 = require("react");
 const uuid_1 = require("uuid");
+const useStorage_1 = require("./utils/useStorage");
 exports.DefaultSessionContext = (0, react_1.createContext)(null);
 const SessionProvider = ({ url, label, toast, children, context = exports.DefaultSessionContext, autoconnect = false, wsAuth = false, binaryType = "blob", }) => {
     // Initialize session
@@ -44,8 +44,8 @@ const SessionProvider = ({ url, label, toast, children, context = exports.Defaul
     }, [autoconnect, session]);
     // Handle wsAuth functionality
     if (wsAuth) {
-        const [userId, setUserId] = (0, usehooks_1.useLocalStorage)("_USER_ID", null);
-        const [sessionId, setSessionId] = (0, usehooks_1.useSessionStorage)("_SESSION_ID", null);
+        const [userId, setUserId] = (0, useStorage_1.useLocalStorage)("_USER_ID", null);
+        const [sessionId, setSessionId] = (0, useStorage_1.useSessionStorage)("_SESSION_ID", null);
         (0, react_1.useEffect)(() => {
             if (!session)
                 return;
