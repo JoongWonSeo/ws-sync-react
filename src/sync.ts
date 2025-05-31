@@ -286,3 +286,39 @@ export function useSynced<S extends Record<string, any>>(
   );
   return stateWithSync;
 }
+
+// Only states
+type StateWithFetch<S> = S & {
+  fetchRemoteState: () => void;
+};
+
+export function useObserved<S extends Record<string, any>>(
+  key: string,
+  initialState: S,
+  overrideSession: Session | null = null
+): StateWithFetch<S> {
+  const [stateWithSync, dispatch] = useSyncedReducer(
+    key,
+    undefined,
+    initialState,
+    overrideSession,
+    false
+  );
+
+  // Create a readonly state object with only the state properties and fetchRemoteState
+  const readonlyState = useMemo<StateWithFetch<S>>(() => {
+    const result = {} as StateWithFetch<S>;
+
+    // Copy only the state properties (those that exist in initialState)
+    (Object.keys(initialState) as Array<keyof S>).forEach((key) => {
+      (result as any)[key] = stateWithSync[key];
+    });
+
+    // Add the fetchRemoteState method
+    result.fetchRemoteState = stateWithSync.fetchRemoteState;
+
+    return result;
+  }, [stateWithSync, initialState]);
+
+  return readonlyState;
+}
