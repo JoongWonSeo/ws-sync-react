@@ -2,6 +2,7 @@ export { Session, SessionProvider, DefaultSessionContext } from "./session";
 export {
   useSynced,
   useSyncedReducer,
+  useObserved,
   SyncedReducer,
   Delegate,
   Sync,
