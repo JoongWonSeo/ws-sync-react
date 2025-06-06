@@ -48,7 +48,7 @@ export type SyncedReducer<S> = (
   delegate: Delegate
 ) => S | void;
 
-type StateWithSync<S> = S &
+export type StateWithSync<S> = S &
   SetterMethodNames<S> &
   SyncerMethodNames<S> & {
     fetchRemoteState: () => void;
@@ -288,7 +288,7 @@ export function useSynced<S extends Record<string, any>>(
 }
 
 // Only states
-type StateWithFetch<S> = S & {
+export type StateWithFetch<S> = S & {
   fetchRemoteState: () => void;
 };
 

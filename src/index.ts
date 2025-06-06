@@ -3,11 +3,16 @@ export {
   useSynced,
   useSyncedReducer,
   useObserved,
-  SyncedReducer,
-  Delegate,
-  Sync,
+  // Built-in Event Types
   Action,
   TaskStart,
   TaskCancel,
+  // Reducer and handlers
+  Delegate,
+  Sync,
+  SyncedReducer,
+  // Synced state types
+  StateWithSync,
+  StateWithFetch,
 } from "./sync";
 export { useRemoteToast } from "./remote-toast";
