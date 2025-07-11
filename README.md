@@ -140,6 +140,27 @@ This is usually just done once in the root component of your app, and it provide
 This simple hook enables the backend to show toast notifications on the frontend.
 
 
+### Zustand integration
+
+For applications that already rely on [Zustand](https://github.com/pmndrs/zustand)
+for state management, the library exposes helpers to create synced stores
+outside of React components.
+
+```javascript
+import { createSyncedStore, Session } from 'ws-sync'
+import { create } from 'zustand'
+
+const session = new Session('ws://localhost:8000/ws')
+
+// Create a vanilla store and then bind it with the Zustand `create` helper
+const notesStore = createSyncedStore('NOTES', { title: '', notes: [] }, session)
+export const useNotes = create(notesStore)
+
+// Anywhere in your app you can use the store
+useNotes.getState().syncTitle('new title')
+```
+
+
 ## Development & Publishing
 
 After you make changes (don't forget to bump the version number!), run the following commands to publish the changes to npm:
