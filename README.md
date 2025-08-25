@@ -147,4 +147,5 @@ After you make changes (don't forget to bump the version number!), run the follo
 ```bash
 npm run build
 npm publish
-```
+
+For more details on how the provider and hooks are organised see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

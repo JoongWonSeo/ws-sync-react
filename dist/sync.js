@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.useObserved = exports.useSynced = exports.useSyncedReducer = void 0;
+exports.useSyncedReducer = useSyncedReducer;
+exports.useSynced = useSynced;
+exports.useObserved = useObserved;
 const react_1 = require("react");
 const fast_json_patch_1 = require("fast-json-patch");
 const session_1 = require("./session");
@@ -164,12 +166,10 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
     ]);
     return [stateWithSync, dispatch];
 }
-exports.useSyncedReducer = useSyncedReducer;
 function useSynced(key, initialState, overrideSession = null, sendOnInit = false) {
     const [stateWithSync, dispatch] = useSyncedReducer(key, undefined, initialState, overrideSession, sendOnInit);
     return stateWithSync;
 }
-exports.useSynced = useSynced;
 function useObserved(key, initialState, overrideSession = null) {
     const [stateWithSync, dispatch] = useSyncedReducer(key, undefined, initialState, overrideSession, false);
     // Create a readonly state object with only the state properties and fetchRemoteState
@@ -185,4 +185,3 @@ function useObserved(key, initialState, overrideSession = null) {
     }, [stateWithSync, initialState]);
     return readonlyState;
 }
-exports.useObserved = useObserved;

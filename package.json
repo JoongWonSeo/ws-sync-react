@@ -12,7 +12,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -25,12 +26,18 @@
   },
   "homepage": "https://github.com/JoongWonSeo/ws-sync-react#readme",
   "devDependencies": {
+    "@types/jest": "^29.5.12",
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/dom": "^10.4.0",
     "@types/uuid": "^9.0.8",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "ts-jest": "^29.1.1",
     "typescript": "^5.3.3"
-  },
-  "peerDependencies": {
-    "react": "^19.0.0"
   },
   "dependencies": {
     "fast-json-patch": "^3.1.1",
