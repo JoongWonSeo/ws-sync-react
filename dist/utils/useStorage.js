@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.useSessionStorage = exports.useLocalStorage = void 0;
+exports.useLocalStorage = useLocalStorage;
+exports.useSessionStorage = useSessionStorage;
 const react_1 = require("react");
 // Define the storage hooks locally
 function useStorage(storageType, key, initialValue) {
@@ -71,8 +72,6 @@ function useStorage(storageType, key, initialValue) {
 function useLocalStorage(key, initialValue) {
     return useStorage("localStorage", key, initialValue);
 }
-exports.useLocalStorage = useLocalStorage;
 function useSessionStorage(key, initialValue) {
     return useStorage("sessionStorage", key, initialValue);
 }
-exports.useSessionStorage = useSessionStorage;
