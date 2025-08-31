@@ -1,4 +1,2 @@
-module.exports = {
-  preset: "ts-jest",
-  testEnvironment: "jsdom",
-};
+export const preset = "ts-jest";
+export const testEnvironment = "jsdom";

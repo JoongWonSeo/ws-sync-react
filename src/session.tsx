@@ -1,12 +1,5 @@
 import fileDownload from "js-file-download";
-import {
-  createContext,
-  useMemo,
-  useEffect,
-  Context,
-  useRef,
-  useState,
-} from "react";
+import { Context, createContext, useEffect, useState } from "react";
 import { v4 as uuid } from "uuid";
 import { useLocalStorage, useSessionStorage } from "./utils/useStorage";
 
@@ -135,7 +128,7 @@ export class Session {
   binaryType: BinaryType;
 
   isConnected: boolean = false;
-  onConnectionChange?: (arg0: boolean) => void = undefined;
+  onConnectionChange?: (isConnected: boolean) => void = undefined;
   minRetryInterval: number;
   maxRetryInterval: number;
   retryInterval: number;
