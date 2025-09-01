@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --sourcemap --clean --out-dir dist",
+    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean --out-dir dist",
     "prepare": "npm run build",
     "test": "jest"
   },
