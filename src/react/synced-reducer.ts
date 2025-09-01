@@ -1,7 +1,7 @@
-import { useReducer, useContext, useEffect, useMemo, useCallback } from "react";
 import { applyReducer, deepClone } from "fast-json-patch";
-import { Session, DefaultSessionContext } from "./session";
-import { castImmutable, produceWithPatches, enablePatches } from "immer";
+import { castImmutable, enablePatches, produceWithPatches } from "immer";
+import { useCallback, useContext, useEffect, useMemo, useReducer } from "react";
+import { DefaultSessionContext, Session } from "../session";
 enablePatches();
 
 const setEvent = (key: string) => "_SET:" + key;
