@@ -726,7 +726,7 @@ var useRemoteToast = (session, toast, prefix = "") => {
 
 // src/zustand/synced-store.ts
 var import_immer2 = require("immer");
-var import_zustand = require("zustand");
+var import_middleware = require("zustand/middleware");
 (0, import_immer2.enablePatches)();
 var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
   const newStore = store;
@@ -770,50 +770,6 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
   return initialState;
 };
 var synced = syncedImpl;
-var useBearStore = (0, import_zustand.create)()(
-  synced(
-    (set, get, store) => ({
-      // the state
-      bears: 0,
-      // access the store.sync from "inside"
-      setBears: () => {
-        set((state) => ({ bears: state.bears + 1 }));
-        store.sync({ debounceMs: 1e3 });
-      },
-      resetBears: (args) => {
-        store.sync.sendAction({ type: "resetBears", ...args });
-      }
-      // resetBears: (args) => {
-      //   delegate.resetBears(args);
-      // },
-      // or: resetBears: delegate.resetBears
-    }),
-    { key: "bear", session: new Session("ws://localhost") }
-  )
-);
-console.log(useBearStore.sync());
-var bearStore = (0, import_zustand.createStore)()(
-  synced(
-    (set, get, store) => ({
-      // the state
-      bears: 0,
-      // access the store.sync from "inside"
-      setBears: () => {
-        set((state) => ({ bears: state.bears + 1 }));
-        store.sync({ debounceMs: 1e3 });
-      },
-      resetBears: (args) => {
-        store.sync.sendAction({ type: "resetBears", ...args });
-      }
-      // resetBears: (args) => {
-      //   delegate.resetBears(args);
-      // },
-      // or: resetBears: delegate.resetBears
-    }),
-    { key: "bear", session: new Session("ws://localhost") }
-  )
-);
-console.log(bearStore.sync());
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   DefaultSessionContext,

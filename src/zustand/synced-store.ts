@@ -1,13 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { enablePatches, produceWithPatches } from "immer";
 import {
-  create,
-  createStore,
-  type Mutate,
-  type StateCreator,
-  type StoreApi,
-  type StoreMutatorIdentifier,
+  Mutate,
+  StateCreator,
+  StoreApi,
+  StoreMutatorIdentifier,
 } from "zustand";
+import "zustand/middleware";
 import { Session } from "../session";
 import {
   convertShallowUpdateToImmerPatch,
@@ -128,58 +127,58 @@ const syncedImpl: SyncedImpl =
 // ========== export the middleware ========== //
 export const synced = syncedImpl as unknown as Synced;
 
-// ========== usage example ========== //
-type BearState = {
-  bears: number;
-  setBears: () => void;
-  resetBears: (args: object) => void;
-};
+// // ========== usage example ========== //
+// type BearState = {
+//   bears: number;
+//   setBears: () => void;
+//   resetBears: (args: object) => void;
+// };
 
-const useBearStore = create<BearState>()(
-  synced(
-    (set, get, store) => ({
-      // the state
-      bears: 0,
-      // access the store.sync from "inside"
-      setBears: () => {
-        set((state) => ({ bears: state.bears + 1 }));
-        store.sync({ debounceMs: 1000 });
-      },
-      resetBears: (args) => {
-        store.sync.sendAction({ type: "resetBears", ...args });
-      },
-      // resetBears: (args) => {
-      //   delegate.resetBears(args);
-      // },
-      // or: resetBears: delegate.resetBears
-    }),
-    { key: "bear", session: new Session("ws://localhost") }
-  )
-);
-// access the store.foo from "outside"
-console.log(useBearStore.sync());
+// const useBearStore = create<BearState>()(
+//   synced(
+//     (set, get, store) => ({
+//       // the state
+//       bears: 0,
+//       // access the store.sync from "inside"
+//       setBears: () => {
+//         set((state) => ({ bears: state.bears + 1 }));
+//         store.sync({ debounceMs: 1000 });
+//       },
+//       resetBears: (args) => {
+//         store.sync.sendAction({ type: "resetBears", ...args });
+//       },
+//       // resetBears: (args) => {
+//       //   delegate.resetBears(args);
+//       // },
+//       // or: resetBears: delegate.resetBears
+//     }),
+//     { key: "bear", session: new Session("ws://localhost") }
+//   )
+// );
+// // access the store.foo from "outside"
+// console.log(useBearStore.sync());
 
-// ========== usage example (vanilla store) ========== //
-const bearStore = createStore<BearState>()(
-  synced(
-    (set, get, store) => ({
-      // the state
-      bears: 0,
-      // access the store.sync from "inside"
-      setBears: () => {
-        set((state) => ({ bears: state.bears + 1 }));
-        store.sync({ debounceMs: 1000 });
-      },
-      resetBears: (args) => {
-        store.sync.sendAction({ type: "resetBears", ...args });
-      },
-      // resetBears: (args) => {
-      //   delegate.resetBears(args);
-      // },
-      // or: resetBears: delegate.resetBears
-    }),
-    { key: "bear", session: new Session("ws://localhost") }
-  )
-);
-// access the store.foo from "outside"
-console.log(bearStore.sync());
+// // ========== usage example (vanilla store) ========== //
+// const bearStore = createStore<BearState>()(
+//   synced(
+//     (set, get, store) => ({
+//       // the state
+//       bears: 0,
+//       // access the store.sync from "inside"
+//       setBears: () => {
+//         set((state) => ({ bears: state.bears + 1 }));
+//         store.sync({ debounceMs: 1000 });
+//       },
+//       resetBears: (args) => {
+//         store.sync.sendAction({ type: "resetBears", ...args });
+//       },
+//       // resetBears: (args) => {
+//       //   delegate.resetBears(args);
+//       // },
+//       // or: resetBears: delegate.resetBears
+//     }),
+//     { key: "bear", session: new Session("ws://localhost") }
+//   )
+// );
+// // access the store.foo from "outside"
+// console.log(bearStore.sync());
