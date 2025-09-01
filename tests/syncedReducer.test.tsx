@@ -6,11 +6,12 @@ class MockSession {
   events: Record<string, (data: any) => void> = {};
   inits: Record<string, () => void> = {};
   sent: { event: string; data: any }[] = [];
+  sentBinary: { event: string; meta: any; data: ArrayBuffer }[] = [];
   send(event: string, data: any) {
     this.sent.push({ event, data });
   }
   sendBinary(event: string, meta: any, data: ArrayBuffer) {
-    /* noop */
+    this.sentBinary.push({ event, meta, data });
   }
   registerEvent(ev: string, cb: (data: any) => void) {
     this.events[ev] = cb;
@@ -69,5 +70,38 @@ describe("useSynced", () => {
       ]);
     });
     expect(hookResult.current.count).toBe(5);
+  });
+
+  test("sendAction/startTask/cancelTask and sendBinary work via Sync", () => {
+    const session = new MockSession();
+    const wrapper = ({ children }: any) => (
+      <DefaultSessionContext.Provider value={session as any}>
+        {children}
+      </DefaultSessionContext.Provider>
+    );
+    const { result } = renderHook(() => useSynced("KEY2", { x: 0 }), {
+      wrapper,
+    });
+
+    act(() => {
+      result.current.sendAction({ type: "A", p: 1 });
+      result.current.startTask({ type: "T", id: 2 });
+      result.current.cancelTask({ type: "T" });
+    });
+    expect(session.sent).toEqual([
+      { event: "_ACTION:KEY2", data: { type: "A", p: 1 } },
+      { event: "_TASK_START:KEY2", data: { type: "T", id: 2 } },
+      { event: "_TASK_CANCEL:KEY2", data: { type: "T" } },
+    ]);
+
+    const buf = new Uint8Array([3]).buffer;
+    act(() => {
+      result.current.sendBinary({ type: "UPLOAD", name: "x" }, buf);
+    });
+    expect(session.sentBinary[0]).toEqual({
+      event: "_ACTION:KEY2",
+      meta: { type: "UPLOAD", name: "x" },
+      data: buf,
+    });
   });
 });

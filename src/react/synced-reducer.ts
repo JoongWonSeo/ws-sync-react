@@ -1,27 +1,23 @@
+import type { Operation as JsonPatch } from "fast-json-patch";
 import { applyReducer, deepClone } from "fast-json-patch";
-import { castImmutable, enablePatches, produceWithPatches } from "immer";
-import { useCallback, useContext, useEffect, useMemo, useReducer } from "react";
+import {
+  castImmutable,
+  enablePatches,
+  Patch as ImmerPatch,
+  produceWithPatches,
+} from "immer";
+import { useContext, useEffect, useMemo, useReducer } from "react";
 import { DefaultSessionContext, Session } from "../session";
+import {
+  Action,
+  convertShallowUpdateToImmerPatch,
+  patchEvent,
+  setEvent,
+  Sync as SyncObj,
+  TaskCancel,
+  TaskStart,
+} from "../sync";
 enablePatches();
-
-const setEvent = (key: string) => "_SET:" + key;
-const getEvent = (key: string) => "_GET:" + key;
-const patchEvent = (key: string) => "_PATCH:" + key;
-const actionEvent = (key: string) => "_ACTION:" + key;
-const taskStartEvent = (key: string) => "_TASK_START:" + key;
-const taskCancelEvent = (key: string) => "_TASK_CANCEL:" + key;
-
-export type Action = {
-  type: string;
-} & Record<string, any>;
-
-export type TaskStart = {
-  type: string;
-} & Record<string, any>;
-
-export type TaskCancel = {
-  type: string;
-};
 
 // Utility types for type-safe setters and syncers
 type Capitalize<S extends string> = S extends `${infer F}${infer R}`
@@ -39,12 +35,12 @@ type SyncerMethodNames<T> = {
 };
 
 // sync object that can calculate the json patch and send it to remote
-export type Sync<S> = () => void;
+export type Sync = () => void;
 export type Delegate = (actionOverride?: Action) => void;
 export type SyncedReducer<S> = (
   draft: S,
   action: Action,
-  sync: Sync<S>,
+  sync: Sync,
   delegate: Delegate
 ) => S | void;
 
@@ -52,13 +48,14 @@ export type StateWithSync<S> = S &
   SetterMethodNames<S> &
   SyncerMethodNames<S> & {
     fetchRemoteState: () => void;
+    sendState: (state: S) => void;
     sendAction: (action: Action) => void;
     startTask: (task: TaskStart) => void;
     cancelTask: (task: TaskCancel) => void;
     sendBinary: (action: Action, data: ArrayBuffer) => void;
   };
 
-export function useSyncedReducer<S extends Record<string, any>>(
+export function useSyncedReducer<S extends Record<string, unknown>>(
   key: string,
   syncedReducer: SyncedReducer<S> | undefined,
   initialState: S,
@@ -66,103 +63,76 @@ export function useSyncedReducer<S extends Record<string, any>>(
   sendOnInit = false
 ): [StateWithSync<S>, (action: Action) => void] {
   const session = overrideSession ?? useContext(DefaultSessionContext);
+  if (!session) {
+    throw new Error(
+      "useSyncedReducer requires a Session from context or overrideSession"
+    );
+  }
 
-  // Syncing: Local -> Remote
-  const fetchRemoteState = useCallback(() => {
-    session?.send(getEvent(key), {});
-  }, [session, key]);
-  const sendState = useCallback(
-    (newState: S) => {
-      session?.send(setEvent(key), newState);
-    },
-    [session, key]
+  // Underlying sync helper
+  const syncObj = useMemo(
+    () => new SyncObj(key, session, sendOnInit),
+    [session, key, sendOnInit]
   );
-  const sendPatch = useCallback(
-    (patch: any) => {
-      session?.send(patchEvent(key), patch);
-    },
-    [session, key]
-  );
-  const sendAction = useCallback(
-    (action: Action) => {
-      session?.send(actionEvent(key), action);
-    },
-    [session, key]
-  );
-  const startTask = useCallback(
-    (task: TaskStart) => {
-      session?.send(taskStartEvent(key), task);
-    },
-    [session, key]
-  );
-  const cancelTask = useCallback(
-    (task: TaskCancel) => {
-      session?.send(taskCancelEvent(key), task);
-    },
-    [session, key]
-  );
-  const sendBinary = useCallback(
-    (action: Action, data: ArrayBuffer) => {
-      session?.sendBinary(actionEvent(key), action, data);
-    },
-    [session, key]
-  );
+
+  // Syncing: Local -> Remote handled by syncObj
+  const sendAction = syncObj.sendAction.bind(syncObj);
+  const startTask = syncObj.startTask.bind(syncObj);
+  const cancelTask = syncObj.cancelTask.bind(syncObj);
+  const sendBinary = syncObj.sendBinary.bind(syncObj);
 
   // State Management
   // reducer must be wrapped to handle the remote events, and also return a queue of side effects to perform, i.e. sync and sendAction
+  type Effect = () => void;
   const wrappedReducer = (
-    [state, _]: [S, any[]],
+    [state]: [S, Effect[]],
     action: Action
-  ): [S, any[]] => {
+  ): [S, Effect[]] => {
     switch (action.type) {
+      // completely overwrite the state, usually sent by the remote on init or to refresh
       case setEvent(key): {
-        const newState = action.data;
+        const newState = action.data as S;
         return [newState, []];
       }
 
+      // apply a patch to the state, usually sent by the remote on sync
       case patchEvent(key): {
-        const patch = action.data;
+        const patch: JsonPatch[] = action.data as JsonPatch[];
         const newState = patch.reduce(applyReducer, deepClone(state));
         return [newState, []];
       }
 
+      // any other user-defined action, either locally or by the remote
       default: {
         if (!syncedReducer) {
           return [state, []];
         }
-        // sync and delegate enqueues the patch and action to be sent to the remote, will actually be executed in the useEffect after the reducer
-        const createEffect: any[] = [];
+        // sync and delegate enqueue the patch and action to be sent to the remote, using Sync helper, as a side-effect to be executed after reducer
+        // this is because render/reducer must be side-effect-free (and will be double-triggered in strict mode to enforce this)
+        const patchEffects: ((patches: ImmerPatch[]) => Effect)[] = [];
+        const plainEffects: Effect[] = [];
         const sync = () => {
-          createEffect.push((patch: any[]) => () => {
-            if (patch.length > 0) {
-              //convert "Immer" patches to standard json patches
-              patch.forEach((p) => {
-                // if path is an array, join it into a string
-                if (Array.isArray(p.path)) {
-                  p.path = p.path.join("/");
-                }
-                // if it does not start with /, add it
-                if (!p.path.startsWith("/")) {
-                  p.path = "/" + p.path;
-                }
-              });
-              sendPatch(patch);
-            }
+          patchEffects.push((patches: ImmerPatch[]) => () => {
+            syncObj.appendPatch(patches);
+            syncObj.sync();
           });
         };
         const delegate = (actionOverride?: Action) => {
-          createEffect.push((patch: any[]) => () => {
+          plainEffects.push(() => {
             sendAction(actionOverride ?? action);
           });
         };
-        const withPatch = produceWithPatches(syncedReducer);
-        const [newState, patch, inverse] = withPatch(
+        // call the user-defined reducer, and get the new state and patches
+        const [newState, patches] = produceWithPatches(syncedReducer)(
           castImmutable(state),
           action,
           sync,
           delegate
         );
-        return [newState, createEffect.map((f) => f(patch))];
+        return [
+          newState,
+          [...plainEffects, ...patchEffects.map((f) => f(patches))],
+        ];
       }
     }
   };
@@ -182,102 +152,89 @@ export function useSyncedReducer<S extends Record<string, any>>(
 
   // Syncing: Remote -> Local
   // callbacks to handle remote events
-  const setState = useCallback(
-    (newState: S) => {
-      dispatch({ type: setEvent(key), data: newState });
-    },
-    [key]
-  );
-  const patchState = useCallback(
-    (patch: any) => {
-      dispatch({ type: patchEvent(key), data: patch });
-    },
-    [key]
-  );
-  const actionState = useCallback((action: Action) => {
+  const setState = (newState: S) => {
+    dispatch({ type: setEvent(key), data: newState });
+  };
+  const patchState = (patch: JsonPatch[]) => {
+    dispatch({ type: patchEvent(key), data: patch });
+  };
+  const actionState = (action: Action) => {
     dispatch(action);
-  }, []);
+  };
 
   useEffect(() => {
-    session?.registerEvent(getEvent(key), () => sendState(state)); //TODO: closure correct?
-    session?.registerEvent(setEvent(key), setState);
-    session?.registerEvent(patchEvent(key), patchState);
-    session?.registerEvent(actionEvent(key), actionState);
-    // TODO: allow binary handler
-    if (sendOnInit) {
-      // Optionally, send the initial state or an initial action
-      session?.registerInit(key, () => sendState(state));
-    }
-
-    return () => {
-      session?.deregisterEvent(getEvent(key));
-      session?.deregisterEvent(setEvent(key));
-      session?.deregisterEvent(patchEvent(key));
-      session?.deregisterEvent(actionEvent(key));
-      if (sendOnInit) {
-        session?.deregisterInit(key);
-      }
-    };
-  }, [session, key]);
+    return syncObj.registerHandlers(
+      () => state,
+      setState,
+      patchState,
+      actionState
+    );
+  }, [syncObj, state]);
 
   // Dynamically create setters and syncers for each attribute with proper typing
   const setters = useMemo(() => {
-    const result = {} as SetterMethodNames<S> & SyncerMethodNames<S>;
+    const result = {} as Partial<SetterMethodNames<S> & SyncerMethodNames<S>>;
 
     (Object.keys(initialState) as Array<keyof S>).forEach((attr) => {
       const attrStr = String(attr);
       const upper = attrStr.charAt(0).toUpperCase() + attrStr.slice(1);
 
       const setter = (newValue: S[typeof attr]) => {
-        const patch = [{ op: "replace", path: `/${attrStr}`, value: newValue }];
+        const patch: JsonPatch[] = [
+          { op: "replace", path: `/${attrStr}`, value: newValue },
+        ];
         patchState(patch); // local update
       };
       const syncer = (newValue: S[typeof attr]) => {
-        const patch = [{ op: "replace", path: `/${attrStr}`, value: newValue }];
+        const patch: JsonPatch[] = [
+          { op: "replace", path: `/${attrStr}`, value: newValue },
+        ];
         patchState(patch); // local update
-        sendPatch(patch); // sync to remote
+        // also append as Immer patch and flush via Sync
+        const immerPatches = convertShallowUpdateToImmerPatch({
+          [attrStr]: newValue,
+        } as Record<string, unknown>);
+        syncObj.appendPatch(immerPatches);
+        syncObj.sync();
       };
 
-      // Type assertion is safe here because we're constructing the exact shape
-      (result as any)[`set${upper}`] = setter;
-      (result as any)[`sync${upper}`] = syncer;
+      // Assign with proper typing
+      (result as unknown as SetterMethodNames<S>)[
+        `set${upper}` as keyof SetterMethodNames<S>
+      ] = setter as SetterMethodNames<S>[keyof SetterMethodNames<S>];
+      (result as unknown as SyncerMethodNames<S>)[
+        `sync${upper}` as keyof SyncerMethodNames<S>
+      ] = syncer as SyncerMethodNames<S>[keyof SyncerMethodNames<S>];
     });
 
-    return result;
-  }, [initialState, patchState, sendPatch]);
+    return result as SetterMethodNames<S> & SyncerMethodNames<S>;
+  }, [initialState, patchState, key, session, syncObj]);
 
   // expose the state with setters and syncers
   const stateWithSync = useMemo<StateWithSync<S>>(
     () => ({
       ...state,
       ...setters,
-      fetchRemoteState, // explicitly fetch the entire state from remote
+      fetchRemoteState: syncObj.fetchRemoteState.bind(syncObj),
+      sendState: (s: S) => syncObj.sendState(s),
       sendAction,
       startTask,
       cancelTask,
       sendBinary,
     }),
-    [
-      state,
-      setters,
-      fetchRemoteState,
-      sendAction,
-      startTask,
-      cancelTask,
-      sendBinary,
-    ]
+    [state, setters, syncObj, sendAction, startTask, cancelTask, sendBinary]
   );
 
   return [stateWithSync, dispatch];
 }
 
-export function useSynced<S extends Record<string, any>>(
+export function useSynced<S extends Record<string, unknown>>(
   key: string,
   initialState: S,
   overrideSession: Session | null = null,
   sendOnInit = false
 ): StateWithSync<S> {
-  const [stateWithSync, dispatch] = useSyncedReducer(
+  const [stateWithSync] = useSyncedReducer(
     key,
     undefined,
     initialState,
@@ -292,12 +249,12 @@ export type StateWithFetch<S> = S & {
   fetchRemoteState: () => void;
 };
 
-export function useObserved<S extends Record<string, any>>(
+export function useObserved<S extends Record<string, unknown>>(
   key: string,
   initialState: S,
   overrideSession: Session | null = null
 ): StateWithFetch<S> {
-  const [stateWithSync, dispatch] = useSyncedReducer(
+  const [stateWithSync] = useSyncedReducer(
     key,
     undefined,
     initialState,
@@ -310,8 +267,8 @@ export function useObserved<S extends Record<string, any>>(
     const result = {} as StateWithFetch<S>;
 
     // Copy only the state properties (those that exist in initialState)
-    (Object.keys(initialState) as Array<keyof S>).forEach((key) => {
-      (result as any)[key] = stateWithSync[key];
+    (Object.keys(initialState) as Array<keyof S>).forEach((k) => {
+      (result as unknown as S)[k] = stateWithSync[k];
     });
 
     // Add the fetchRemoteState method

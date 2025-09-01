@@ -2,19 +2,29 @@
   "name": "ws-sync",
   "version": "0.7.2",
   "description": "WebSocket Sync: Frontend",
-  "main": "dist/index.js",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist/**",
+    "README.md",
+    "LICENSE",
+    "docs/**"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsup src/index.ts --format cjs,esm --dts --sourcemap --clean --out-dir dist",
     "prepare": "npm run build",
     "test": "jest"
   },
+  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JoongWonSeo/ws-sync-react.git"
@@ -41,6 +51,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "ts-jest": "^29.1.1",
+    "tsup": "^8.5.0",
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.41.0"
   },
@@ -50,5 +61,9 @@
     "js-file-download": "^0.4.12",
     "uuid": "^9.0.1",
     "zustand": "^5.0.8"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
   }
 }

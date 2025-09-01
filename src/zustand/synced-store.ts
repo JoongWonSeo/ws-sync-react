@@ -1,14 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { produceWithPatches } from "immer";
+import { enablePatches, produceWithPatches } from "immer";
 import {
   create,
+  createStore,
   type Mutate,
   type StateCreator,
   type StoreApi,
   type StoreMutatorIdentifier,
 } from "zustand";
-import type { Action, TaskCancel, TaskStart } from "../react/synced-reducer";
-import type { Session } from "../session";
+import { Session } from "../session";
+import {
+  convertShallowUpdateToImmerPatch,
+  Sync as SyncObj,
+  SyncParams,
+} from "../sync";
 
 // ========== type helpers ========== //
 // "Overwrite" the keys of T with the keys of U.
@@ -21,25 +26,16 @@ type Cast<T, U> = T extends U ? T : U;
 
 // to initialize the middleware
 export interface SyncOptions {
-  syncKey: string;
-}
-
-// gets passed to the sync function
-export interface SyncParams {
-  debounceMs?: number;
-}
-
-// gets attached to the store
-export interface Sync {
-  (syncParams?: SyncParams): void; // makes the object callable
-  options: SyncOptions;
+  key: string;
   session: Session;
-  fetchRemoteState: () => void;
-  sendAction: (action: Action) => void;
-  startTask: (task: TaskStart) => void;
-  cancelTask: (task: TaskCancel) => void;
-  sendBinary: (action: Action, data: ArrayBuffer) => void;
+  sendOnInit?: boolean;
 }
+
+// attached to the store with helpers
+type Sync = SyncObj & {
+  (params?: SyncParams): void;
+  delegate: any; // attach delegate of the store actions
+};
 
 type Synced = <
   State,
@@ -63,57 +59,83 @@ type SyncedImpl = <State>(
   syncOptions: SyncOptions
 ) => StateCreator<State, [], []>;
 
+enablePatches();
+
 const syncedImpl: SyncedImpl =
   (stateCreator, syncOptions) => (set, get, store) => {
     type State = ReturnType<typeof stateCreator>;
 
     // attach new sync object to the store
-    const syncFunction = (syncParams?: SyncParams) => {
-      console.log("syncing...", syncParams);
-
-      // check for skip due to debounce logic
-
-      // gather the patches produced by the setters, and send them to the server
-      // TODO: either for each or merge all patches
-      session?.send(patchEvent(key), patches);
-      sync.lastSyncTime = Date.now();
-    };
-
-    // the patches that will be sent to the server
     const newStore = store as Mutate<StoreApi<State>, [["sync", Sync]]>;
-    newStore.sync = Object.assign(syncFunction, {
-      options: syncOptions,
+    const syncObj = new SyncObj(
+      syncOptions.key,
+      syncOptions.session,
+      syncOptions.sendOnInit
+    );
+    // expose a callable sync function with helper methods bound to syncObj
+    const callableSync = syncObj.sync.bind(syncObj) as any;
+    Object.assign(callableSync, {
+      appendPatch: syncObj.appendPatch.bind(syncObj),
+      sendAction: syncObj.sendAction.bind(syncObj),
+      startTask: syncObj.startTask.bind(syncObj),
+      cancelTask: syncObj.cancelTask.bind(syncObj),
+      sendBinary: syncObj.sendBinary.bind(syncObj),
+      delegate: {} as any,
     });
+    newStore.sync = callableSync as any;
 
     // wrap the setter to add immer support along with saving the generated patches
     store.setState = (updater, replace?: boolean, ...args) => {
       if (typeof updater === "function") {
-        const newStateCreator = produceWithPatches(updater as any);
+        // Build a producer that supports both mutation-style and return-style updaters
+        const userFn = updater as (s: State) => State | Partial<State> | void;
+        const producer = (draft: State) => {
+          const result = userFn(draft as State);
+          if (result && typeof result === "object") {
+            Object.assign(draft as unknown as object, result as object);
+          }
+        };
+        const newStateCreator = produceWithPatches(producer as any);
         // apply the producer to the current state, save the patches
-        const [newState, patches, inversePatches] = newStateCreator(get());
+        const [newState, patches] = newStateCreator(get());
         // save the patches, so that they can be synced later
-        newStore.sync.patches.push(convertImmerPatchesToJsonPatch(patches)); // sync.appendPatch
+        (newStore.sync as any).appendPatch(patches);
 
-        return set(newState, replace as any, ...args);
+        return set(newState as State, replace as any, ...args);
       } else {
         // new state is already given, convert to patch
         const newState = updater;
         // save as patch, so that it can be synced later
-        newStore.sync.patches.push(convertShallowUpdateToJsonPatch(newState)); // sync.appendPatch
+        (newStore.sync as any).appendPatch(
+          convertShallowUpdateToImmerPatch(newState as Record<string, any>)
+        );
 
         return set(newState, replace as any, ...args);
       }
     };
 
+    // handle incoming actions
+    // syncObj.session.registerEvent();
+
     // create the state with the wrapped setter and the mutated store (note newStore === store same object)
-    return stateCreator(store.setState, get, newStore);
+    const initialState = stateCreator(store.setState, get, newStore);
+
+    // save initial state to the sync object
+
+    return initialState;
   };
 
 // ========== export the middleware ========== //
 export const synced = syncedImpl as unknown as Synced;
 
 // ========== usage example ========== //
-const useBearStore = create(
+type BearState = {
+  bears: number;
+  setBears: () => void;
+  resetBears: (args: object) => void;
+};
+
+const useBearStore = create<BearState>()(
   synced(
     (set, get, store) => ({
       // the state
@@ -123,10 +145,41 @@ const useBearStore = create(
         set((state) => ({ bears: state.bears + 1 }));
         store.sync({ debounceMs: 1000 });
       },
+      resetBears: (args) => {
+        store.sync.sendAction({ type: "resetBears", ...args });
+      },
+      // resetBears: (args) => {
+      //   delegate.resetBears(args);
+      // },
+      // or: resetBears: delegate.resetBears
     }),
-    // inject into store
-    { syncKey: "synced" }
+    { key: "bear", session: new Session("ws://localhost") }
   )
 );
 // access the store.foo from "outside"
 console.log(useBearStore.sync());
+
+// ========== usage example (vanilla store) ========== //
+const bearStore = createStore<BearState>()(
+  synced(
+    (set, get, store) => ({
+      // the state
+      bears: 0,
+      // access the store.sync from "inside"
+      setBears: () => {
+        set((state) => ({ bears: state.bears + 1 }));
+        store.sync({ debounceMs: 1000 });
+      },
+      resetBears: (args) => {
+        store.sync.sendAction({ type: "resetBears", ...args });
+      },
+      // resetBears: (args) => {
+      //   delegate.resetBears(args);
+      // },
+      // or: resetBears: delegate.resetBears
+    }),
+    { key: "bear", session: new Session("ws://localhost") }
+  )
+);
+// access the store.foo from "outside"
+console.log(bearStore.sync());
