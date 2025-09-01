@@ -1,10 +1,7 @@
 import fileDownload from "js-file-download";
 import { Context, createContext, useEffect, useState } from "react";
 import { v4 as uuid } from "uuid";
-import { Toast } from "./remote-toast";
 import { useLocalStorage, useSessionStorage } from "./utils/useStorage";
-
-// Event data types can be defined here when needed
 
 export const DefaultSessionContext = createContext<Session | null>(null);
 
@@ -15,7 +12,7 @@ interface SessionProviderProps {
   context?: Context<Session | null>;
   autoconnect?: boolean;
   wsAuth?: boolean;
-  toast?: Toast;
+  toast?: any;
   binaryType?: BinaryType;
 }
 
@@ -131,23 +128,23 @@ export class Session {
   binaryType: BinaryType;
 
   isConnected: boolean = false;
-  onConnectionChange?: (isConnected: boolean) => void;
+  onConnectionChange?: (isConnected: boolean) => void = undefined;
   minRetryInterval: number;
   maxRetryInterval: number;
   retryInterval: number;
-  toast?: Toast;
+  toast: any;
 
-  private eventHandlers: { [event: string]: (data: unknown) => void } = {};
+  private eventHandlers: { [event: string]: (data: any) => void } = {};
   private initHandlers: { [key: string]: () => void } = {};
-  private binaryHandler?: (data: ArrayBuffer | Blob) => void;
-  private binData: { type: string; metadata: object } | null = null; // metadata for the next binary message
+  private binaryHandler: ((data: any) => void) | null = null;
+  private binData: any | null = null; // metadata for the next binary message
   private retryTimeout: ReturnType<typeof setTimeout> | null = null; // scheduled retry
   private autoReconnect: boolean = true;
 
   constructor(
     url: string,
     label: string = "Server",
-    toast: Toast | undefined = undefined,
+    toast: any = null,
     binaryType: BinaryType = "blob",
     minRetryInterval: number = 250,
     maxRetryInterval: number = 10000
@@ -161,7 +158,6 @@ export class Session {
     this.retryInterval = minRetryInterval;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   registerEvent(event: string, callback: (data: any) => void) {
     if (event in this.eventHandlers) {
       console.error(
@@ -203,8 +199,8 @@ export class Session {
     delete this.initHandlers[key];
   }
 
-  registerBinary(callback: (data: ArrayBuffer | Blob) => void) {
-    if (this.binaryHandler !== undefined) {
+  registerBinary(callback: (data: any) => void) {
+    if (this.binaryHandler !== null) {
       console.error(
         `[WS Session] Attempted to registerBinary, but a binary handler is already registered`
       );
@@ -214,16 +210,16 @@ export class Session {
   }
 
   deregisterBinary() {
-    if (this.binaryHandler === undefined) {
+    if (this.binaryHandler === null) {
       console.error(
         `[WS Session] Attempted to deregisterBinary, but no binary handler was registered`
       );
       throw new Error(`not registered`);
     }
-    this.binaryHandler = undefined;
+    this.binaryHandler = null;
   }
 
-  send(event: string, data: unknown) {
+  send(event: string, data: any) {
     if (this.ws?.readyState !== WebSocket.OPEN) {
       console.warn(
         `[WS Session] Attempted to send event=${event} while socket not OPEN`
@@ -244,7 +240,7 @@ export class Session {
     );
   }
 
-  sendBinary(event: string, metadata: unknown, data: ArrayBuffer) {
+  sendBinary(event: string, metadata: any, data: ArrayBuffer) {
     if (this.ws?.readyState !== WebSocket.OPEN) {
       console.warn(
         `[WS Session] Attempted to sendBinary event=${event} while socket not OPEN`
@@ -400,7 +396,7 @@ export class Session {
 
         // clear the metadata since we've handled it
         this.binData = null;
-      } else if (this.binaryHandler !== undefined) {
+      } else if (this.binaryHandler !== null) {
         this.binaryHandler(e.data);
       } else {
         console.warn(

@@ -1,7 +1,7 @@
+import { useReducer, useContext, useEffect, useMemo, useCallback } from "react";
 import { applyReducer, deepClone } from "fast-json-patch";
-import { castImmutable, enablePatches, produceWithPatches } from "immer";
-import { useCallback, useContext, useEffect, useMemo, useReducer } from "react";
-import { DefaultSessionContext, Session } from "./session";
+import { Session, DefaultSessionContext } from "./session";
+import { castImmutable, produceWithPatches, enablePatches } from "immer";
 enablePatches();
 
 const setEvent = (key: string) => "_SET:" + key;
@@ -13,11 +13,11 @@ const taskCancelEvent = (key: string) => "_TASK_CANCEL:" + key;
 
 export type Action = {
   type: string;
-} & Record<string, unknown>;
+} & Record<string, any>;
 
 export type TaskStart = {
   type: string;
-} & Record<string, unknown>;
+} & Record<string, any>;
 
 export type TaskCancel = {
   type: string;
