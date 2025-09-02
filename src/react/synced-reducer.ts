@@ -6,7 +6,7 @@ import {
   Patch as ImmerPatch,
   produceWithPatches,
 } from "immer";
-import { useContext, useEffect, useMemo, useReducer } from "react";
+import { useContext, useEffect, useMemo, useReducer, useRef } from "react";
 import { DefaultSessionContext, Session } from "../session";
 import {
   Action,
@@ -162,14 +162,18 @@ export function useSyncedReducer<S extends Record<string, unknown>>(
     dispatch(action);
   };
 
+  // avoid re-registering handlers on every state update
+  const latestStateRef = useRef(state);
+  latestStateRef.current = state;
+
   useEffect(() => {
     return syncObj.registerHandlers(
-      () => state,
+      () => latestStateRef.current,
       setState,
       patchState,
       actionState
     );
-  }, [syncObj, state]);
+  }, [syncObj]);
 
   // Dynamically create setters and syncers for each attribute with proper typing
   const setters = useMemo(() => {

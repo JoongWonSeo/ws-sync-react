@@ -278,14 +278,14 @@ export class Session {
       // console.info(`[WS Session] onopen - Connected to ${this.label}!`);
       this.toast?.success(`Connected to ${this.label}!`);
       this.isConnected = true;
-      if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
+      this.onConnectionChange?.(this.isConnected);
       this.retryInterval = this.minRetryInterval;
     };
 
     this.ws.onclose = () => {
       // console.warn(`[WS Session] onclose - Disconnected from ${this.label}`);
       this.isConnected = false;
-      if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
+      this.onConnectionChange?.(this.isConnected);
 
       if (this.autoReconnect) {
         this.toast?.warning(
@@ -335,8 +335,8 @@ export class Session {
     // Mark disconnected and notify once
     const wasConnected = this.isConnected;
     this.isConnected = false;
-    if (wasConnected && this.onConnectionChange) {
-      this.onConnectionChange(this.isConnected);
+    if (wasConnected) {
+      this.onConnectionChange?.(this.isConnected);
     }
 
     // Disable auto-reconnect and prevent onclose from firing a second time

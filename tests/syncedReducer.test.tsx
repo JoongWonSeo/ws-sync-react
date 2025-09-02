@@ -1,31 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import React from "react";
-import { DefaultSessionContext, useSynced } from "../src";
-
-class MockSession {
-  events: Record<string, (data: any) => void> = {};
-  inits: Record<string, () => void> = {};
-  sent: { event: string; data: any }[] = [];
-  sentBinary: { event: string; meta: any; data: ArrayBuffer }[] = [];
-  send(event: string, data: any) {
-    this.sent.push({ event, data });
-  }
-  sendBinary(event: string, meta: any, data: ArrayBuffer) {
-    this.sentBinary.push({ event, meta, data });
-  }
-  registerEvent(ev: string, cb: (data: any) => void) {
-    this.events[ev] = cb;
-  }
-  deregisterEvent(ev: string) {
-    delete this.events[ev];
-  }
-  registerInit(key: string, cb: () => void) {
-    this.inits[key] = cb;
-  }
-  deregisterInit(key: string) {
-    delete this.inits[key];
-  }
-}
+import { DefaultSessionContext, useSynced, useSyncedReducer } from "../src";
+import { Sync as SyncClass } from "../src/sync";
+import { MockSession } from "./utils/mocks";
 
 describe("useSynced", () => {
   test("local updates and syncing", () => {
@@ -103,5 +80,58 @@ describe("useSynced", () => {
       meta: { type: "UPLOAD", name: "x" },
       data: buf,
     });
+  });
+});
+
+describe("useSyncedReducer registerHandlers effect", () => {
+  test("registerHandlers is called on mount but NOT every state update", () => {
+    const registerSpy = jest.spyOn(SyncClass.prototype, "registerHandlers");
+
+    const session = new MockSession();
+    const wrapper = ({ children }: any) => (
+      <DefaultSessionContext.Provider value={session as any}>
+        {children}
+      </DefaultSessionContext.Provider>
+    );
+
+    type S = { count: number };
+    const reducer = (draft: S, action: any) => {
+      if (action.type === "INC") {
+        draft.count += 1;
+      }
+    };
+
+    const { result } = renderHook(
+      () =>
+        useSyncedReducer<S>(
+          "RH",
+          reducer as any,
+          { count: 0 } as any,
+          null,
+          false
+        ),
+      { wrapper }
+    );
+
+    // Initial mount -> one registration
+    expect(registerSpy).toHaveBeenCalledTimes(1);
+
+    // Each state update should NOT retrigger the effect and re-register handlers
+    act(() => {
+      result.current[1]({ type: "INC" } as any);
+    });
+    expect(registerSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current[1]({ type: "INC" } as any);
+    });
+    expect(registerSpy).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current[1]({ type: "INC" } as any);
+    });
+    expect(registerSpy).toHaveBeenCalledTimes(1);
+
+    registerSpy.mockRestore();
   });
 });
