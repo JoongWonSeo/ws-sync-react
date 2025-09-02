@@ -332,15 +332,21 @@ export class Session {
 
   disconnect() {
     // console.info(`[WS Session] Disconnecting from ${this.label}`);
-    this.autoReconnect = false;
-    this.ws?.close();
-    if (this.onConnectionChange) this.onConnectionChange(false);
+    // Mark disconnected and notify once
+    const wasConnected = this.isConnected;
+    this.isConnected = false;
+    if (wasConnected && this.onConnectionChange) {
+      this.onConnectionChange(this.isConnected);
+    }
 
+    // Disable auto-reconnect and prevent onclose from firing a second time
+    this.autoReconnect = false;
     if (this.ws !== null) {
       this.ws.onopen = null;
       this.ws.onclose = null;
       this.ws.onmessage = null;
       this.ws.onerror = null;
+      this.ws.close();
       this.ws = null;
     }
 

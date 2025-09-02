@@ -190,16 +190,13 @@ const syncedImpl: SyncedImpl =
 
     // Register session handlers to support remote -> local updates
     syncObj.registerHandlers<State>(
-      () => get() as State,
+      () => get(),
       (s: State) => {
         // replace entire state
         originalSetState(s as any, true as any);
       },
       (patches: JsonPatch[]) => {
-        const next = patches.reduce(
-          applyReducer,
-          deepClone(get() as unknown as object)
-        ) as State;
+        const next = patches.reduce(applyReducer, deepClone(get())) as State;
         originalSetState(next as any, true as any);
       },
       (action: Action) => {

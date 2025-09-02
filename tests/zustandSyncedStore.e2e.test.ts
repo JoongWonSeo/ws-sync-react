@@ -1,32 +1,18 @@
 import { act } from "@testing-library/react";
+import WS from "jest-websocket-mock";
 import { create } from "zustand";
 import { Session } from "../src/session";
 import { synced } from "../src/zustand/synced-store";
-import {
-  MockWebSocket,
-  createToastMock,
-  installMockWebSocket,
-  resetMockWebSocket,
-  restoreMockWebSocket,
-} from "./utils/mocks";
-
-jest.useFakeTimers();
-
-beforeAll(() => {
-  installMockWebSocket();
-});
-
-afterAll(() => {
-  restoreMockWebSocket();
-});
+import { createToastMock } from "./utils/mocks";
 
 afterEach(() => {
   jest.clearAllMocks();
-  resetMockWebSocket();
+  WS.clean();
 });
 
 describe("zustand synced-store e2e with real Session + mocked ws", () => {
-  test("remote _SET and _PATCH update state in store", () => {
+  test("remote _SET and _PATCH update state in store", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
     const session = new Session("ws://localhost", "Srv", toast);
 
@@ -41,28 +27,26 @@ describe("zustand synced-store e2e with real Session + mocked ws", () => {
     );
 
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     act(() => {
-      ws.receive(JSON.stringify({ type: "_SET:ZEE", data: { count: 10 } }));
+      server.send({ type: "_SET:ZEE", data: { count: 10 } });
     });
     expect(store.getState().count).toBe(10);
 
     act(() => {
-      ws.receive(
-        JSON.stringify({
-          type: "_PATCH:ZEE",
-          data: [{ op: "replace", path: "/count", value: 3 }],
-        })
-      );
+      server.send({
+        type: "_PATCH:ZEE",
+        data: [{ op: "replace", path: "/count", value: 3 }],
+      });
     });
     expect(store.getState().count).toBe(3);
 
     cleanup?.();
   });
 
-  test("local set + sync emits _PATCH and updates state", () => {
+  test("local set + sync emits _PATCH and updates state", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     const session = new Session("ws://localhost");
     type S = { count: number; inc: (by: number) => void };
     const store = create<S>()(
@@ -79,17 +63,13 @@ describe("zustand synced-store e2e with real Session + mocked ws", () => {
     );
 
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     act(() => {
       store.getState().inc(2);
     });
 
-    const sent = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last = sent[sent.length - 1];
+    const last = (await server.nextMessage) as any;
     expect(last.type).toBe("_PATCH:ZEE2");
     expect(last.data[0]).toEqual({ op: "replace", path: "/count", value: 2 });
     expect(store.getState().count).toBe(2);
@@ -97,7 +77,8 @@ describe("zustand synced-store e2e with real Session + mocked ws", () => {
     cleanup?.();
   });
 
-  test("remote _ACTION routes to named handler on store", () => {
+  test("remote _ACTION routes to named handler on store", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     const session = new Session("ws://localhost");
     type S = { count: number; INC: (p: { by: number }) => void };
     const store = create<S>()(
@@ -111,20 +92,18 @@ describe("zustand synced-store e2e with real Session + mocked ws", () => {
     );
 
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     act(() => {
-      ws.receive(
-        JSON.stringify({ type: "_ACTION:ACT", data: { type: "INC", by: 5 } })
-      );
+      server.send({ type: "_ACTION:ACT", data: { type: "INC", by: 5 } });
     });
     expect(store.getState().count).toBe(5);
 
     cleanup?.();
   });
 
-  test("delegate helper sends original action via _ACTION", () => {
+  test("delegate helper sends original action via _ACTION", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     const session = new Session("ws://localhost");
     type S = { noop: () => void };
     const store = create<S>()(
@@ -139,17 +118,13 @@ describe("zustand synced-store e2e with real Session + mocked ws", () => {
     );
 
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     act(() => {
       store.getState().noop();
     });
 
-    const frames = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last = frames[frames.length - 1];
+    const last = (await server.nextMessage) as any;
     expect(last).toEqual({
       type: "_ACTION:DLGZ",
       data: { type: "PING", n: 7 },
@@ -158,30 +133,26 @@ describe("zustand synced-store e2e with real Session + mocked ws", () => {
     cleanup?.();
   });
 
-  test("fetchRemoteState emits _GET and sendState sends _SET", () => {
+  test("fetchRemoteState emits _GET and sendState sends _SET", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     const session = new Session("ws://localhost");
     type S = { a: number };
     const store = create<S>()(synced(() => ({ a: 1 }), { key: "FS", session }));
 
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     act(() => {
       (store as any).sync.fetchRemoteState();
     });
-    let frames = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    expect(frames.pop()).toEqual({ type: "_GET:FS", data: {} });
+    const first = (await server.nextMessage) as any;
+    expect(first).toEqual({ type: "_GET:FS", data: {} });
 
     act(() => {
       (store as any).sync.sendState({ a: 9 });
     });
-    frames = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    expect(frames.pop()).toEqual({ type: "_SET:FS", data: { a: 9 } });
+    const second = (await server.nextMessage) as any;
+    expect(second).toEqual({ type: "_SET:FS", data: { a: 9 } });
 
     cleanup?.();
   });

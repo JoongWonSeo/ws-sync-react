@@ -1,4 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
+import WS from "jest-websocket-mock";
 import React from "react";
 import {
   DefaultSessionContext,
@@ -7,29 +8,12 @@ import {
   useSynced,
   useSyncedReducer,
 } from "../src";
-import {
-  MockWebSocket,
-  createToastMock,
-  installMockWebSocket,
-  resetMockWebSocket,
-  restoreMockWebSocket,
-} from "./utils/mocks";
+import { createToastMock } from "./utils/mocks";
 
 // Use fake timers where reconnection/backoff could interfere
-jest.useFakeTimers();
-
-// Attach mock WebSocket globally for real Session usage
-beforeAll(() => {
-  installMockWebSocket();
-});
-
-afterAll(() => {
-  restoreMockWebSocket();
-});
-
 afterEach(() => {
   jest.clearAllMocks();
-  resetMockWebSocket();
+  WS.clean();
 });
 
 function CounterView({ label }: { label: string }) {
@@ -68,7 +52,8 @@ function CounterView({ label }: { label: string }) {
 }
 
 describe("synced reducer e2e with real Session + mocked ws", () => {
-  test("remote _SET and _PATCH update state and cause re-render", () => {
+  test("remote _SET and _PATCH update state and cause re-render", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
     const session = new Session("ws://localhost", "Srv", toast);
 
@@ -80,31 +65,27 @@ describe("synced reducer e2e with real Session + mocked ws", () => {
 
     // establish websocket
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => {
-      ws.open();
-    });
+    await server.connected;
 
     // Remote _SET should overwrite and render
     act(() => {
-      ws.receive(JSON.stringify({ type: "_SET:E2E", data: { count: 10 } }));
+      server.send({ type: "_SET:E2E", data: { count: 10 } });
     });
     expect(screen.getByTestId("count-E2E").textContent).toBe("10");
 
     // Remote _PATCH should apply json-patch and render
     act(() => {
-      ws.receive(
-        JSON.stringify({
-          type: "_PATCH:E2E",
-          data: [{ op: "replace", path: "/count", value: 3 }],
-        })
-      );
+      server.send({
+        type: "_PATCH:E2E",
+        data: [{ op: "replace", path: "/count", value: 3 }],
+      });
     });
     expect(screen.getByTestId("count-E2E").textContent).toBe("3");
     cleanup?.();
   });
 
-  test("local dispatch triggers patch send; remote _ACTION routes through reducer", () => {
+  test("local dispatch triggers patch send; remote _ACTION routes through reducer", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
     const session = new Session("ws://localhost", "Srv", toast);
 
@@ -115,10 +96,7 @@ describe("synced reducer e2e with real Session + mocked ws", () => {
     );
 
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => {
-      ws.open();
-    });
+    await server.connected;
 
     // Click inc button -> reducer drafts count+=2, sync() flushes patches
     act(() => {
@@ -126,10 +104,7 @@ describe("synced reducer e2e with real Session + mocked ws", () => {
     });
 
     // Last frame should be a _PATCH:E2E2 with replace /count
-    const sent = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last = sent[sent.length - 1];
+    const last = (await server.nextMessage) as any;
     expect(last.type).toBe("_PATCH:E2E2");
     expect(Array.isArray(last.data)).toBe(true);
     expect(last.data[0].op).toBe("replace");
@@ -137,9 +112,7 @@ describe("synced reducer e2e with real Session + mocked ws", () => {
 
     // Remote action should route through reducer and update state
     act(() => {
-      ws.receive(
-        JSON.stringify({ type: "_ACTION:E2E2", data: { type: "INC", by: 5 } })
-      );
+      server.send({ type: "_ACTION:E2E2", data: { type: "INC", by: 5 } });
     });
     expect(screen.getByTestId("count-E2E2").textContent).toBe("7");
 
@@ -180,7 +153,8 @@ function SyncedObjView() {
 }
 
 describe("useSynced e2e setters vs syncers", () => {
-  test("setters update UI without emitting network; syncers emit _PATCH", () => {
+  test("setters update UI without emitting network; syncers emit _PATCH", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
     const session = new Session("ws://localhost", "Srv", toast);
 
@@ -191,8 +165,7 @@ describe("useSynced e2e setters vs syncers", () => {
     );
 
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     // Setters only -> no network traffic but UI updates
     act(() => {
@@ -201,16 +174,15 @@ describe("useSynced e2e setters vs syncers", () => {
     });
     expect(screen.getByTestId("count-synced").textContent).toBe("1");
     expect(screen.getByTestId("label-synced").textContent).toBe("x!");
-    expect(ws.sent.length).toBe(0);
+    // shortly wait and then expect no messages
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(server).toHaveReceivedMessages([]);
 
     // Syncers -> emit _PATCH frames
     act(() => {
       screen.getByText("syncCount").click();
     });
-    const frames = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last = frames[frames.length - 1];
+    const last = (await server.nextMessage) as any;
     expect(last.type).toBe("_PATCH:SYNCED");
     expect(last.data[0]).toEqual({ op: "replace", path: "/count", value: 3 });
     expect(screen.getByTestId("count-synced").textContent).toBe("3");
@@ -218,10 +190,7 @@ describe("useSynced e2e setters vs syncers", () => {
     act(() => {
       screen.getByText("syncLabel").click();
     });
-    const frames2 = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last2 = frames2[frames2.length - 1];
+    const last2 = (await server.nextMessage) as any;
     expect(last2.type).toBe("_PATCH:SYNCED");
     expect(last2.data[0]).toEqual({
       op: "replace",
@@ -233,7 +202,8 @@ describe("useSynced e2e setters vs syncers", () => {
     cleanup?.();
   });
 
-  test("mixing set and sync sends only synced field patch", () => {
+  test("mixing set and sync sends only synced field patch", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
     const session = new Session("ws://localhost", "Srv", toast);
 
@@ -244,18 +214,14 @@ describe("useSynced e2e setters vs syncers", () => {
     );
 
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     // Mix: set label locally, then sync count -> only count patch emitted
     act(() => {
       screen.getByText("mixSetLabelSyncCount").click();
     });
 
-    const sent = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last = sent[sent.length - 1];
+    const last = (await server.nextMessage) as any;
     expect(last.type).toBe("_PATCH:SYNCED");
     expect(last.data).toEqual([{ op: "replace", path: "/count", value: 5 }]);
     // UI reflects both local set and synced count
@@ -277,7 +243,7 @@ describe("additional coverage for synced-reducer.ts", () => {
     );
   });
 
-  test("without reducer, custom actions are ignored and emit no network", () => {
+  test("without reducer, custom actions are ignored and emit no network", async () => {
     function NoReducerView() {
       const [state, dispatch] = useSyncedReducer("NOR", undefined, {
         a: 1,
@@ -293,34 +259,39 @@ describe("additional coverage for synced-reducer.ts", () => {
     }
 
     const session = new Session("ws://localhost");
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
         <NoReducerView />
       </DefaultSessionContext.Provider>
     );
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     act(() => {
       screen.getByText("noop").click();
     });
     expect(screen.getByTestId("a-nor").textContent).toBe("1");
-    expect(ws.sent.length).toBe(0);
+    expect(
+      await Promise.race([
+        server.nextMessage.then(() => "msg"),
+        new Promise((r) => setTimeout(() => r("none"), 30)),
+      ])
+    ).toBe("none");
 
     cleanup?.();
   });
 
-  test("_GET triggers sendState of current snapshot (covers getState path)", () => {
+  test("_GET triggers sendState of current snapshot (covers getState path)", async () => {
     const session = new Session("ws://localhost");
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
         <SyncedObjView />
       </DefaultSessionContext.Provider>
     );
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     // Change local state first
     act(() => {
@@ -328,19 +299,16 @@ describe("additional coverage for synced-reducer.ts", () => {
     });
 
     act(() => {
-      ws.receive(JSON.stringify({ type: "_GET:SYNCED", data: {} }));
+      server.send({ type: "_GET:SYNCED", data: {} });
     });
-    const frames = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last = frames[frames.length - 1];
+    const last = (await server.nextMessage) as any;
     expect(last.type).toBe("_SET:SYNCED");
     expect(last.data).toEqual({ count: 1, label: "x" });
 
     cleanup?.();
   });
 
-  test("delegate() sends original action via _ACTION (covers delegate effect)", () => {
+  test("delegate() sends original action via _ACTION (covers delegate effect)", async () => {
     function DelegateView() {
       const reducer = (
         draft: { v: number },
@@ -359,22 +327,19 @@ describe("additional coverage for synced-reducer.ts", () => {
     }
 
     const session = new Session("ws://localhost");
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
         <DelegateView />
       </DefaultSessionContext.Provider>
     );
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     act(() => {
       screen.getByText("go").click();
     });
-    const frames = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last = frames[frames.length - 1];
+    const last = (await server.nextMessage) as any;
     expect(last).toEqual({
       type: "_ACTION:DLG",
       data: { type: "DELEG", n: 2 },
@@ -383,7 +348,7 @@ describe("additional coverage for synced-reducer.ts", () => {
     cleanup?.();
   });
 
-  test("sendState method on stateWithSync sends _SET (covers sendState mapping)", () => {
+  test("sendState method on stateWithSync sends _SET (covers sendState mapping)", async () => {
     function SendStateView() {
       const state = useSynced("SS", { a: 0 });
       return (
@@ -392,28 +357,25 @@ describe("additional coverage for synced-reducer.ts", () => {
     }
 
     const session = new Session("ws://localhost");
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
         <SendStateView />
       </DefaultSessionContext.Provider>
     );
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     act(() => {
       screen.getByText("send").click();
     });
-    const frames = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last = frames[frames.length - 1];
+    const last = (await server.nextMessage) as any;
     expect(last).toEqual({ type: "_SET:SS", data: { a: 9 } });
 
     cleanup?.();
   });
 
-  test("useObserved e2e: readonly updates and fetchRemoteState emits _GET", () => {
+  test("useObserved e2e: readonly updates and fetchRemoteState emits _GET", async () => {
     function ReadonlyView() {
       const obs = useObserved("RO", { a: 1, b: 2 } as any);
       return (
@@ -426,23 +388,21 @@ describe("additional coverage for synced-reducer.ts", () => {
     }
 
     const session = new Session("ws://localhost");
+    const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
         <ReadonlyView />
       </DefaultSessionContext.Provider>
     );
     const cleanup = session.connect();
-    const ws = MockWebSocket.instances[0];
-    act(() => ws.open());
+    await server.connected;
 
     // Remote patch updates readonly view
     act(() => {
-      ws.receive(
-        JSON.stringify({
-          type: "_PATCH:RO",
-          data: [{ op: "replace", path: "/a", value: 5 }],
-        })
-      );
+      server.send({
+        type: "_PATCH:RO",
+        data: [{ op: "replace", path: "/a", value: 5 }],
+      });
     });
     expect(screen.getByTestId("ro-a").textContent).toBe("5");
 
@@ -450,10 +410,7 @@ describe("additional coverage for synced-reducer.ts", () => {
     act(() => {
       screen.getByText("fetch").click();
     });
-    const frames = ws.sent
-      .filter((s) => typeof s === "string")
-      .map((s) => JSON.parse(s as string));
-    const last = frames[frames.length - 1];
+    const last = (await server.nextMessage) as any;
     expect(last).toEqual({ type: "_GET:RO", data: {} });
 
     cleanup?.();
