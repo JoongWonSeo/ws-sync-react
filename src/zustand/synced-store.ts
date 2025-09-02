@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { Operation as JsonPatch } from "fast-json-patch";
+import { applyReducer, deepClone } from "fast-json-patch";
 import type { Draft } from "immer";
 import { enablePatches, produceWithPatches } from "immer";
 import "zustand/middleware";
@@ -10,6 +12,7 @@ import {
 } from "zustand/vanilla";
 import { Session } from "../session";
 import {
+  Action,
   convertShallowUpdateToImmerPatch,
   Sync as SyncObj,
   SyncParams,
@@ -128,6 +131,9 @@ const syncedImpl: SyncedImpl =
     });
     newStore.sync = callableSync as any;
 
+    // Keep reference to the original setState to bypass patch emission for remote updates
+    const originalSetState = store.setState.bind(store);
+
     // wrap the setter to add immer support along with saving the generated patches
     store.setState = (updater, replace?: boolean, ...args) => {
       if (typeof updater === "function") {
@@ -158,13 +164,67 @@ const syncedImpl: SyncedImpl =
       }
     };
 
-    // handle incoming actions
-    // syncObj.session.registerEvent();
+    // expose extra helpers on sync
+    Object.assign(callableSync, {
+      fetchRemoteState: syncObj.fetchRemoteState.bind(syncObj),
+      sendState: syncObj.sendState.bind(syncObj),
+    });
+
+    // Create a delegate proxy so calling store.sync.delegate.FOO(payload)
+    // sends an _ACTION with type "FOO" and payload fields
+    const delegateProxy = new Proxy(
+      {},
+      {
+        get: (_target, propKey) => {
+          return (payload?: Record<string, unknown>) => {
+            const type = String(propKey);
+            (newStore.sync as any).sendAction({ type, ...(payload || {}) });
+          };
+        },
+      }
+    );
+    (newStore.sync as any).delegate = delegateProxy as any;
 
     // create the state with the wrapped setter and the mutated store (note newStore === store same object)
     const initialState = stateCreator(store.setState, get, newStore);
 
-    // save initial state to the sync object
+    // Register session handlers to support remote -> local updates
+    syncObj.registerHandlers<State>(
+      () => get() as State,
+      (s: State) => {
+        // replace entire state
+        originalSetState(s as any, true as any);
+      },
+      (patches: JsonPatch[]) => {
+        const next = patches.reduce(
+          applyReducer,
+          deepClone(get() as unknown as object)
+        ) as State;
+        originalSetState(next as any, true as any);
+      },
+      (action: Action) => {
+        const currentState = get() as unknown as Record<string, any>;
+        const handler = currentState[action.type];
+        if (typeof handler === "function") {
+          const payload = { ...(action as Record<string, any>) };
+          delete (payload as any).type;
+          try {
+            handler(payload);
+          } catch (err) {
+            // swallow handler errors to avoid breaking socket pipeline
+            // users can handle their own errors inside action methods
+            console.error(
+              `[zustand synced] error invoking action handler for ${action.type}:`,
+              err
+            );
+          }
+        }
+      }
+    );
+
+    // Note: We intentionally do not hook into store destroy lifecycle here,
+    // as newer zustand StoreApi typings may not expose destroy. The Session
+    // cleanup is acceptable to be handled by app lifecycle for now.
 
     return initialState;
   };
