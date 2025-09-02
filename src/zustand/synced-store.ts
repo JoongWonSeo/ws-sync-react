@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { enablePatches, produceWithPatches } from "immer";
+import "zustand/middleware";
 import {
   Mutate,
   StateCreator,
   StoreApi,
   StoreMutatorIdentifier,
-} from "zustand";
-import "zustand/middleware";
+} from "zustand/vanilla";
 import { Session } from "../session";
 import {
   convertShallowUpdateToImmerPatch,
@@ -46,7 +46,7 @@ type Synced = <
 ) => StateCreator<State, Mps, [["sync", Sync], ...Mcs]>; // forward our mutation along with the mutators from our child middlewares
 
 // register our store mutator with zustand
-declare module "zustand" {
+declare module "zustand/vanilla" {
   interface StoreMutators<S, A> {
     sync: Write<Cast<S, object>, { sync: A }>;
   }

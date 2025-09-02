@@ -2,7 +2,7 @@
   "name": "ws-sync",
   "version": "0.7.2",
   "description": "WebSocket Sync: Frontend",
-  "main": "dist/index.cjs",
+  "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "files": [
@@ -15,12 +15,12 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs",
-      "default": "./dist/index.cjs"
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean --out-dir dist",
+    "build": "tsup src/index.ts --format cjs,esm --dts --sourcemap --clean --out-dir dist",
     "prepare": "npm run build",
     "test": "jest"
   },
