@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import type { Draft } from "immer";
 import { enablePatches, produceWithPatches } from "immer";
 import "zustand/middleware";
 import {
@@ -19,6 +20,50 @@ import {
 type Write<T extends object, U extends object> = Omit<T, keyof U> & U;
 // "Cast" T to U, unless T is already a type of U.
 type Cast<T, U> = T extends U ? T : U;
+
+// ========== immer typing helpers (mirrors official zustand/immer) ========== //
+type SkipTwo<T> = T extends { length: 0 }
+  ? []
+  : T extends { length: 1 }
+  ? []
+  : T extends { length: 0 | 1 }
+  ? []
+  : T extends [unknown, unknown, ...infer A]
+  ? A
+  : T extends [unknown, unknown?, ...infer A]
+  ? A
+  : T extends [unknown?, unknown?, ...infer A]
+  ? A
+  : never;
+
+type SetStateType<T extends unknown[]> = Exclude<T[0], (...args: any[]) => any>;
+
+type StoreImmer<S> = S extends {
+  setState: infer SetState;
+}
+  ? SetState extends {
+      (...args: infer A1): infer Sr1;
+      (...args: infer A2): infer Sr2;
+    }
+    ? {
+        setState(
+          nextStateOrUpdater:
+            | SetStateType<A2>
+            | Partial<SetStateType<A2>>
+            | ((state: Draft<SetStateType<A2>>) => void),
+          shouldReplace?: false,
+          ...args: SkipTwo<A1>
+        ): Sr1;
+        setState(
+          nextStateOrUpdater:
+            | SetStateType<A2>
+            | ((state: Draft<SetStateType<A2>>) => void),
+          shouldReplace: true,
+          ...args: SkipTwo<A2>
+        ): Sr2;
+      }
+    : never
+  : never;
 
 // ========== externally visible type of the middleware ========== //
 // Pass the store mutators between parent <-> child middlewares
@@ -48,7 +93,7 @@ type Synced = <
 // register our store mutator with zustand
 declare module "zustand/vanilla" {
   interface StoreMutators<S, A> {
-    sync: Write<Cast<S, object>, { sync: A }>;
+    sync: Write<Cast<S, object>, { sync: A }> & StoreImmer<S>;
   }
 }
 
@@ -141,7 +186,9 @@ export const synced = syncedImpl as unknown as Synced;
 //       bears: 0,
 //       // access the store.sync from "inside"
 //       setBears: () => {
-//         set((state) => ({ bears: state.bears + 1 }));
+//         set((state) => {
+//           state.bears += 1;
+//         });
 //         store.sync({ debounceMs: 1000 });
 //       },
 //       resetBears: (args) => {

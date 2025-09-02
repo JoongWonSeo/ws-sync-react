@@ -1,7 +1,7 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import { Context } from 'react';
 import { Operation } from 'fast-json-patch';
-import { Patch } from 'immer';
+import { Patch, Draft } from 'immer';
 import { StoreMutatorIdentifier, StateCreator } from 'zustand/vanilla';
 
 declare const DefaultSessionContext: Context<Session | null>;
@@ -107,6 +107,23 @@ declare const useRemoteToast: (session: Session | null, toast: any, prefix?: str
 
 type Write<T extends object, U extends object> = Omit<T, keyof U> & U;
 type Cast<T, U> = T extends U ? T : U;
+type SkipTwo<T> = T extends {
+    length: 0;
+} ? [] : T extends {
+    length: 1;
+} ? [] : T extends {
+    length: 0 | 1;
+} ? [] : T extends [unknown, unknown, ...infer A] ? A : T extends [unknown, unknown?, ...infer A] ? A : T extends [unknown?, unknown?, ...infer A] ? A : never;
+type SetStateType<T extends unknown[]> = Exclude<T[0], (...args: any[]) => any>;
+type StoreImmer<S> = S extends {
+    setState: infer SetState;
+} ? SetState extends {
+    (...args: infer A1): infer Sr1;
+    (...args: infer A2): infer Sr2;
+} ? {
+    setState(nextStateOrUpdater: SetStateType<A2> | Partial<SetStateType<A2>> | ((state: Draft<SetStateType<A2>>) => void), shouldReplace?: false, ...args: SkipTwo<A1>): Sr1;
+    setState(nextStateOrUpdater: SetStateType<A2> | ((state: Draft<SetStateType<A2>>) => void), shouldReplace: true, ...args: SkipTwo<A2>): Sr2;
+} : never : never;
 interface SyncOptions {
     key: string;
     session: Session;
@@ -123,7 +140,7 @@ declare module "zustand/vanilla" {
     interface StoreMutators<S, A> {
         sync: Write<Cast<S, object>, {
             sync: A;
-        }>;
+        }> & StoreImmer<S>;
     }
 }
 declare const synced: Synced;
