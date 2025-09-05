@@ -99,6 +99,40 @@ describe("Sync core behavior", () => {
 });
 
 describe("Sync dynamic action handlers", () => {
+  test("createDelegators typing works with enum-like keys and interface params (no index signature)", () => {
+    // Simulate generated types
+    const Keys = {
+      append: "APPEND",
+      resetAll: "RESET_ALL",
+      selectOrClear: "SELECT_OR_CLEAR",
+      updateNote: "UPDATE_NOTE",
+    } as const;
+    type KeysT = (typeof Keys)[keyof typeof Keys];
+
+    interface Params {
+      APPEND: { id: string };
+      RESET_ALL: null;
+      SELECT_OR_CLEAR: { index: number | null };
+      UPDATE_NOTE: { index: number; title: string };
+    }
+
+    // Renamed mapping object
+    const Renamed = {
+      add: Keys.append,
+      reset: Keys.resetAll,
+      select: Keys.selectOrClear,
+      update: Keys.updateNote,
+    } as const;
+
+    // Construct
+    const sync = new Sync("K", new MockSession() as any);
+    const d = sync.createDelegators<Params>()(Renamed);
+    // Type-only assertions (no runtime effect)
+    d.add({ id: "x" });
+    d.reset();
+    d.select({ index: 1 });
+    d.update({ index: 0, title: "New" });
+  });
   test("registered dynamic handler takes precedence over catch-all", () => {
     const session = new MockSession();
     const sync = new Sync("DOC", session as any);

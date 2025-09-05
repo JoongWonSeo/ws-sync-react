@@ -166,16 +166,16 @@ export class Sync {
 
   // Create a set of delegator functions that forward to sendAction
   public createDelegators<
-    KeyToParams extends Record<string, unknown>,
+    KeyToParams extends object,
     NameToKey extends { [N in keyof NameToKey]: keyof KeyToParams }
   >(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
-  public createDelegators<KeyToParams extends Record<string, unknown>>(): <
+  public createDelegators<KeyToParams extends object>(): <
     NameToKey extends Record<string, keyof KeyToParams>
   >(
     nameToKey: NameToKey
   ) => Actions<NameToKey, KeyToParams>;
   public createDelegators<
-    KeyToParams extends Record<string, unknown>,
+    KeyToParams extends object,
     NameToKey extends Record<string, keyof KeyToParams>
   >(nameToKey?: NameToKey) {
     if (arguments.length === 0) {
