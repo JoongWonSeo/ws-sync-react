@@ -109,11 +109,15 @@ type Sync = {
   sendBinary: (action: Action, data: ArrayBuffer) => void;
   fetchRemoteState: () => void;
   sendState: <S>(state: S) => void;
-  registerExposedActions: (
-    handlers: Record<string, (payload: Record<string, unknown>) => void>
+  registerExposedActions: <
+    Handlers extends Record<string, (...args: any[]) => void>
+  >(
+    handlers: Handlers
   ) => () => void;
-  useExposedActions: (
-    handlers: Record<string, (payload: Record<string, unknown>) => void>
+  useExposedActions: <
+    Handlers extends Record<string, (...args: any[]) => void>
+  >(
+    handlers: Handlers
   ) => void;
 };
 
