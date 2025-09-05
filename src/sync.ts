@@ -15,10 +15,7 @@ export class Sync {
   readonly session: Session;
   private _patches: ImmerPatch[] = []; // currently unsynced local changes
   private _lastSyncTime: number = 0; // timestamp of last sync
-  private _actionHandlers: Map<
-    string,
-    (payload: Record<string, unknown>) => void
-  > = new Map();
+  private _actionHandlers: Map<string, (...args: any[]) => void> = new Map();
 
   get lastSyncTime(): number {
     return this._lastSyncTime;
@@ -134,9 +131,10 @@ export class Sync {
   }
 
   // Register multiple remote action handlers that take precedence over the catch-all
-  public registerExposedActions(
-    handlers: Record<string, (payload: Record<string, unknown>) => void>
-  ): () => void {
+  public registerExposedActions<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Handlers extends Record<string, (...args: any[]) => void>
+  >(handlers: Handlers): () => void {
     const registeredKeys: string[] = [];
 
     // add to global registry, error if already present
@@ -145,7 +143,9 @@ export class Sync {
         console.error(`[Sync] Attempt to re-register action handler: ${key}`);
         throw new Error(`action handler already registered for ${key}`);
       }
-      this._actionHandlers.set(key, fn);
+      // Store in the generic handler registry
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this._actionHandlers.set(key, fn as (...args: any[]) => void);
       registeredKeys.push(key);
     }
 
@@ -158,9 +158,10 @@ export class Sync {
   }
 
   // React convenience: register/deregister within a useEffect
-  public useExposedActions(
-    handlers: Record<string, (payload: Record<string, unknown>) => void>
-  ): void {
+  public useExposedActions<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Handlers extends Record<string, (...args: any[]) => void>
+  >(handlers: Handlers): void {
     useEffect(() => this.registerExposedActions(handlers), [this, handlers]);
   }
 

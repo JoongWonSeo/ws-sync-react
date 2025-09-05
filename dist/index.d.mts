@@ -99,8 +99,8 @@ declare class Sync$2 {
     fetchRemoteState(): void;
     sendState<S>(state: S): void;
     registerHandlers<S>(getState: () => S, setState: (state: S) => void, patchState: (patch: Operation[]) => void, actionHandler: (action: Action) => void): () => void;
-    registerExposedActions(handlers: Record<string, (payload: Record<string, unknown>) => void>): () => void;
-    useExposedActions(handlers: Record<string, (payload: Record<string, unknown>) => void>): void;
+    registerExposedActions<Handlers extends Record<string, (...args: any[]) => void>>(handlers: Handlers): () => void;
+    useExposedActions<Handlers extends Record<string, (...args: any[]) => void>>(handlers: Handlers): void;
     createDelegators<KeyToParams extends object, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
     createDelegators<KeyToParams extends object>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Actions<NameToKey, KeyToParams>;
 }
