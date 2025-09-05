@@ -133,6 +133,61 @@ describe("Sync dynamic action handlers", () => {
     d.select({ index: 1 });
     d.update({ index: 0, title: "New" });
   });
+
+  test("createDelegators direct form infers mapping and sends actions", () => {
+    const session = new MockSession();
+    const sync = new Sync("DLG", session as any);
+
+    const Keys = {
+      A: "A",
+      B: "B",
+    } as const;
+    interface Params {
+      A: { x: number };
+      B: null;
+    }
+    const map = { doA: Keys.A, doB: Keys.B } as const;
+
+    const d = sync.createDelegators<Params>()(map);
+    d.doA({ x: 1 });
+    d.doB();
+
+    expect(session.sent).toEqual([
+      { event: "_ACTION:DLG", data: { type: "A", x: 1 } },
+      { event: "_ACTION:DLG", data: { type: "B" } },
+    ]);
+  });
+
+  test("store.sync.createDelegators works (curried)", () => {
+    const session = new MockSession();
+    const sync = new Sync("S2", session as any);
+    const Keys = { P: "P", Q: "Q" } as const;
+    interface Params {
+      P: { n: number };
+      Q: null;
+    }
+
+    // Simulate attachment like zustand middleware
+    const callable = sync.sync.bind(sync) as unknown as {
+      createDelegators: Sync["createDelegators"];
+      sendAction: Sync["sendAction"];
+    };
+    (callable as unknown as any).createDelegators =
+      sync.createDelegators.bind(sync);
+    (callable as unknown as any).sendAction = sync.sendAction.bind(sync);
+
+    const d1 = callable.createDelegators<Params>()({
+      p: Keys.P,
+      q: Keys.Q,
+    } as const);
+    d1.p({ n: 2 });
+    d1.q();
+
+    expect(session.sent).toEqual([
+      { event: "_ACTION:S2", data: { type: "P", n: 2 } },
+      { event: "_ACTION:S2", data: { type: "Q" } },
+    ]);
+  });
   test("registered dynamic handler takes precedence over catch-all", () => {
     const session = new MockSession();
     const sync = new Sync("DOC", session as any);

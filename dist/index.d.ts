@@ -101,9 +101,7 @@ declare class Sync$2 {
     registerHandlers<S>(getState: () => S, setState: (state: S) => void, patchState: (patch: Operation[]) => void, actionHandler: (action: Action) => void): () => void;
     registerExposedActions(handlers: Record<string, (payload: Record<string, unknown>) => void>): () => void;
     useExposedActions(handlers: Record<string, (payload: Record<string, unknown>) => void>): void;
-    createDelegators<KeyToParams extends object, NameToKey extends {
-        [N in keyof NameToKey]: keyof KeyToParams;
-    }>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
+    createDelegators<KeyToParams extends object, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
     createDelegators<KeyToParams extends object>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Actions<NameToKey, KeyToParams>;
 }
 type Action = {
@@ -168,8 +166,8 @@ interface SyncOptions {
     sendOnInit?: boolean;
 }
 type CreateDelegatorsFn = {
-    <KeyToParams extends Record<string, unknown>>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Actions<NameToKey, KeyToParams>;
-    <KeyToParams extends Record<string, unknown>, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
+    <KeyToParams extends object>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Actions<NameToKey, KeyToParams>;
+    <KeyToParams extends object, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
 };
 type Sync = {
     obj: Sync$2;

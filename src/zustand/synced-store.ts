@@ -83,13 +83,13 @@ export interface SyncOptions {
 
 // attached to the store with helpers
 type CreateDelegatorsFn = {
-  <KeyToParams extends Record<string, unknown>>(): <
+  <KeyToParams extends object>(): <
     NameToKey extends Record<string, keyof KeyToParams>
   >(
     nameToKey: NameToKey
   ) => Actions<NameToKey, KeyToParams>;
   <
-    KeyToParams extends Record<string, unknown>,
+    KeyToParams extends object,
     NameToKey extends Record<string, keyof KeyToParams>
   >(
     nameToKey: NameToKey
