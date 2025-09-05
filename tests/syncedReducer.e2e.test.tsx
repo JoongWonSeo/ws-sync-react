@@ -415,4 +415,140 @@ describe("additional coverage for synced-reducer.ts", () => {
 
     cleanup?.();
   });
+
+  test("_PATCH produces new state identity and triggers [state] effect", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
+    const session = new Session("ws://localhost");
+
+    type S = { count: number; nested: { v: number } };
+
+    const identityChecks: boolean[] = [];
+    const effectCalls: number[] = [];
+
+    function IdentityView() {
+      const [state] = useSyncedReducer<S>(
+        "IDT",
+        undefined as any,
+        {
+          count: 0,
+          nested: { v: 1 },
+        } as any
+      );
+
+      const prevRef = React.useRef(state);
+      React.useEffect(() => {
+        identityChecks.push(prevRef.current === state);
+        effectCalls.push(1);
+        prevRef.current = state;
+      }, [state]);
+
+      return (
+        <div>
+          <div data-testid="count">{(state as any).count}</div>
+          <div data-testid="nested">{(state as any).nested.v}</div>
+        </div>
+      );
+    }
+
+    render(
+      <DefaultSessionContext.Provider value={session}>
+        <IdentityView />
+      </DefaultSessionContext.Provider>
+    );
+
+    const cleanup = session.connect();
+    await server.connected;
+
+    // Remote _SET
+    act(() => {
+      server.send({ type: "_SET:IDT", data: { count: 10, nested: { v: 2 } } });
+    });
+    expect(screen.getByTestId("count").textContent).toBe("10");
+    expect(screen.getByTestId("nested").textContent).toBe("2");
+
+    // Remote _PATCH on two paths
+    act(() => {
+      server.send({
+        type: "_PATCH:IDT",
+        data: [
+          { op: "replace", path: "/count", value: 3 },
+          { op: "replace", path: "/nested/v", value: 9 },
+        ],
+      });
+    });
+    expect(screen.getByTestId("count").textContent).toBe("3");
+    expect(screen.getByTestId("nested").textContent).toBe("9");
+
+    // Effects must have run on both _SET and _PATCH, and identityChecks for those should be false
+    // First render effect may record true (prev === state on mount); ignore it.
+    const checksAfterMount = identityChecks.slice(1); // exclude mount
+    expect(checksAfterMount.length).toBeGreaterThanOrEqual(2);
+    // For _SET and _PATCH, identity must change
+    expect(checksAfterMount.every((x) => x === false)).toBe(true);
+    // Effect should have run at least twice after mount
+    expect(effectCalls.length).toBeGreaterThanOrEqual(2);
+
+    cleanup?.();
+  });
+
+  test("previous snapshot is not mutated by _PATCH (immutability)", async () => {
+    const server = new WS("ws://localhost", { jsonProtocol: true });
+    const session = new Session("ws://localhost");
+
+    type S = { obj: { a: number; b: number } };
+
+    const prevSnapshots: string[] = [];
+    let effectCount = 0;
+
+    function SnapView() {
+      const [state] = useSyncedReducer<S>(
+        "IMM",
+        undefined as any,
+        {
+          obj: { a: 1, b: 2 },
+        } as any
+      );
+
+      const prevRef = React.useRef(state);
+      React.useEffect(() => {
+        // Capture the previous snapshot at the moment of each update
+        prevSnapshots.push(JSON.stringify(prevRef.current));
+        effectCount += 1;
+        prevRef.current = state;
+      }, [state]);
+
+      return <div data-testid="a">{(state as any).obj.a}</div>;
+    }
+
+    render(
+      <DefaultSessionContext.Provider value={session}>
+        <SnapView />
+      </DefaultSessionContext.Provider>
+    );
+
+    const cleanup = session.connect();
+    await server.connected;
+
+    // _SET establishes baseline and triggers effect (#2) to capture prev snapshot
+    act(() => {
+      server.send({ type: "_SET:IMM", data: { obj: { a: 5, b: 6 } } });
+    });
+    expect(screen.getByTestId("a").textContent).toBe("5");
+
+    // _PATCH should not mutate the captured previous snapshot
+    act(() => {
+      server.send({
+        type: "_PATCH:IMM",
+        data: [{ op: "replace", path: "/obj/a", value: 7 }],
+      });
+    });
+    expect(screen.getByTestId("a").textContent).toBe("7");
+    // After _PATCH, the effect (#3) runs; the previous snapshot recorded for that effect
+    // should be the state from _SET, not mutated by the patch
+    expect(effectCount).toBeGreaterThanOrEqual(2);
+    const lastPrev = prevSnapshots[prevSnapshots.length - 1];
+    expect(lastPrev).toBe(JSON.stringify({ obj: { a: 5, b: 6 } }));
+
+    cleanup?.();
+  });
 });

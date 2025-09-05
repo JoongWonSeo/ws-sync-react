@@ -16,7 +16,10 @@ import {
   convertShallowUpdateToImmerPatch,
   Sync as SyncObj,
   SyncParams,
+  TaskCancel,
+  TaskStart,
 } from "../sync";
+import { Actions } from "../zustand/utils";
 
 // ========== type helpers ========== //
 // "Overwrite" the keys of T with the keys of U.
@@ -79,9 +82,39 @@ export interface SyncOptions {
 }
 
 // attached to the store with helpers
-type Sync = SyncObj & {
-  (params?: SyncParams): void;
-  delegate: any; // attach delegate of the store actions
+type CreateDelegatorsFn = {
+  <KeyToParams extends Record<string, unknown>>(): <
+    NameToKey extends Record<string, keyof KeyToParams>
+  >(
+    nameToKey: NameToKey
+  ) => Actions<NameToKey, KeyToParams>;
+  <
+    KeyToParams extends Record<string, unknown>,
+    NameToKey extends Record<string, keyof KeyToParams>
+  >(
+    nameToKey: NameToKey
+  ): Actions<NameToKey, KeyToParams>;
+};
+
+type Sync = {
+  obj: SyncObj; // attach the original syncObj
+  cleanup: () => void; // cleanup function, for deleting dynamic stores
+
+  // syntactic sugar for easier access
+  (params?: SyncParams): void; // callable sync function
+  createDelegators: CreateDelegatorsFn;
+  sendAction: (action: Action) => void;
+  startTask: (task: TaskStart) => void;
+  cancelTask: (task: TaskCancel) => void;
+  sendBinary: (action: Action, data: ArrayBuffer) => void;
+  fetchRemoteState: () => void;
+  sendState: <S>(state: S) => void;
+  registerExposedActions: (
+    handlers: Record<string, (payload: Record<string, unknown>) => void>
+  ) => () => void;
+  useExposedActions: (
+    handlers: Record<string, (payload: Record<string, unknown>) => void>
+  ) => void;
 };
 
 type Synced = <
@@ -119,20 +152,6 @@ const syncedImpl: SyncedImpl =
       syncOptions.session,
       syncOptions.sendOnInit
     );
-    // expose a callable sync function with helper methods bound to syncObj
-    const callableSync = syncObj.sync.bind(syncObj) as any;
-    Object.assign(callableSync, {
-      appendPatch: syncObj.appendPatch.bind(syncObj),
-      sendAction: syncObj.sendAction.bind(syncObj),
-      startTask: syncObj.startTask.bind(syncObj),
-      cancelTask: syncObj.cancelTask.bind(syncObj),
-      sendBinary: syncObj.sendBinary.bind(syncObj),
-      delegate: {} as any,
-    });
-    newStore.sync = callableSync as any;
-
-    // Keep reference to the original setState to bypass patch emission for remote updates
-    const originalSetState = store.setState.bind(store);
 
     // wrap the setter to add immer support along with saving the generated patches
     store.setState = (updater, replace?: boolean, ...args) => {
@@ -149,14 +168,14 @@ const syncedImpl: SyncedImpl =
         // apply the producer to the current state, save the patches
         const [newState, patches] = newStateCreator(get());
         // save the patches, so that they can be synced later
-        (newStore.sync as any).appendPatch(patches);
+        syncObj.appendPatch(patches);
 
         return set(newState as State, replace as any, ...args);
       } else {
         // new state is already given, convert to patch
         const newState = updater;
         // save as patch, so that it can be synced later
-        (newStore.sync as any).appendPatch(
+        syncObj.appendPatch(
           convertShallowUpdateToImmerPatch(newState as Record<string, any>)
         );
 
@@ -164,47 +183,23 @@ const syncedImpl: SyncedImpl =
       }
     };
 
-    // expose extra helpers on sync
-    Object.assign(callableSync, {
-      fetchRemoteState: syncObj.fetchRemoteState.bind(syncObj),
-      sendState: syncObj.sendState.bind(syncObj),
-    });
-
-    // Create a delegate proxy so calling store.sync.delegate.FOO(payload)
-    // sends an _ACTION with type "FOO" and payload fields
-    const delegateProxy = new Proxy(
-      {},
-      {
-        get: (_target, propKey) => {
-          return (payload?: Record<string, unknown>) => {
-            const type = String(propKey);
-            (newStore.sync as any).sendAction({ type, ...(payload || {}) });
-          };
-        },
-      }
-    );
-    (newStore.sync as any).delegate = delegateProxy as any;
-
-    // create the state with the wrapped setter and the mutated store (note newStore === store same object)
-    const initialState = stateCreator(store.setState, get, newStore);
-
     // Register session handlers to support remote -> local updates
-    syncObj.registerHandlers<State>(
+    const cleanup = syncObj.registerHandlers<State>(
       () => get(),
       (s: State) => {
         // replace entire state
-        originalSetState(s as any, true as any);
+        set(s, true);
       },
       (patches: JsonPatch[]) => {
         const next = patches.reduce(applyReducer, deepClone(get())) as State;
-        originalSetState(next as any, true as any);
+        set(next, true);
       },
       (action: Action) => {
         const currentState = get() as unknown as Record<string, any>;
         const handler = currentState[action.type];
         if (typeof handler === "function") {
           const payload = { ...(action as Record<string, any>) };
-          delete (payload as any).type;
+          delete payload.type;
           try {
             handler(payload);
           } catch (err) {
@@ -219,11 +214,27 @@ const syncedImpl: SyncedImpl =
       }
     );
 
-    // Note: We intentionally do not hook into store destroy lifecycle here,
-    // as newer zustand StoreApi typings may not expose destroy. The Session
-    // cleanup is acceptable to be handled by app lifecycle for now.
+    // expose a callable sync function with helper methods bound to syncObj
+    const callableSync = syncObj.sync.bind(syncObj) as Sync;
+    callableSync.obj = syncObj;
+    callableSync.cleanup = cleanup;
 
-    return initialState;
+    // attach only the public helpers we want to expose
+    callableSync.createDelegators = syncObj.createDelegators.bind(syncObj);
+    callableSync.sendAction = syncObj.sendAction.bind(syncObj);
+    callableSync.startTask = syncObj.startTask.bind(syncObj);
+    callableSync.cancelTask = syncObj.cancelTask.bind(syncObj);
+    callableSync.sendBinary = syncObj.sendBinary.bind(syncObj);
+    callableSync.fetchRemoteState = syncObj.fetchRemoteState.bind(syncObj);
+    callableSync.sendState = syncObj.sendState.bind(syncObj);
+    callableSync.registerExposedActions =
+      syncObj.registerExposedActions.bind(syncObj);
+    callableSync.useExposedActions = syncObj.useExposedActions.bind(syncObj);
+
+    newStore.sync = callableSync;
+
+    // create the state with the wrapped setter and the mutated store (note newStore === store same object)
+    return stateCreator(store.setState, get, newStore);
   };
 
 // ========== export the middleware ========== //

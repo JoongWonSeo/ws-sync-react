@@ -142,7 +142,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
     cleanup?.();
   });
 
-  test("delegate helper sends original action via _ACTION", async () => {
+  test("createDelegators helper sends mapped action via _ACTION", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
     const session = new Session("ws://localhost");
     type S = { noop: () => void };
@@ -150,7 +150,10 @@ describe("synced-store e2e with real Session + mocked ws", () => {
       synced(
         (_set, _get, st) => ({
           noop: () => {
-            st.sync.delegate.PING({ n: 7 });
+            const d = st.sync.createDelegators<{ PING: { n: number } }>()({
+              PING: "PING",
+            } as const);
+            d.PING({ n: 7 });
           },
         }),
         { key: "DLGZ", session }
@@ -459,7 +462,12 @@ describe("synced-store e2e with real Session + mocked ws", () => {
           },
           syncNow: () => st.sync(),
           doSyncOnly: () => st.sync(),
-          doDelegateOnly: () => st.sync.delegate.PING({ n: 1 }),
+          doDelegateOnly: () => {
+            const d = st.sync.createDelegators<{ PING: { n: number } }>()({
+              PING: "PING",
+            } as const);
+            d.PING({ n: 1 });
+          },
         }),
         { key: "NEST", session }
       )
@@ -582,6 +590,196 @@ describe("synced-store e2e with real Session + mocked ws", () => {
     unsubX();
     unsubName();
     cleanup?.();
+  });
+
+  test("sanity check for zustand: nested object stable identity", () => {
+    type User = { name: string; age: number };
+    type S = {
+      me: User;
+      friends: User[];
+      constObj: {
+        str: string;
+      };
+      setMyName: (name: string) => void;
+      setMyNameImmer: (name: string) => void;
+      incrementMyAge: () => void;
+      addFriend: (friend: User) => void;
+      renameFriend: (oldName: string, newName: string) => void;
+      setConstNoopClone: () => void;
+      setConstWithSameViaImmer: () => void;
+      setConstStr: (v: string) => void;
+    };
+    const store = create<S>()(
+      synced(
+        (set) => ({
+          me: { name: "Jay", age: 26 },
+          friends: [
+            { name: "Alice", age: 20 },
+            { name: "Bob", age: 25 },
+          ],
+          constObj: { str: "Hello" },
+          setMyName: (name: string) =>
+            set((state) => ({ me: { ...state.me, name } })),
+          setMyNameImmer: (name: string) =>
+            set((draft) => {
+              draft.me.name = name;
+            }),
+          incrementMyAge: () =>
+            set((draft) => {
+              draft.me.age += 1;
+            }),
+          addFriend: (friend: User) =>
+            set((draft) => {
+              draft.friends.push(friend);
+            }),
+          renameFriend: (oldName: string, newName: string) =>
+            set((draft) => {
+              const f = draft.friends.find((x) => x.name === oldName);
+              if (f) f.name = newName;
+            }),
+          setConstNoopClone: () =>
+            set((state) => ({ constObj: { ...state.constObj } })),
+          setConstWithSameViaImmer: () =>
+            set((draft) => {
+              draft.constObj.str = "Hello";
+            }),
+          setConstStr: (v: string) =>
+            set((draft) => {
+              draft.constObj.str = v;
+            }),
+        }),
+        { key: "TEST", session: new Session("ws://localhost") }
+      )
+    );
+
+    let meRenders = 0;
+    function MeView() {
+      meRenders++;
+      const me = store((s: S) => s.me);
+      return (
+        <div>
+          {me.name} ({me.age})
+        </div>
+      );
+    }
+
+    let friendsRenders = 0;
+    function FriendsView() {
+      friendsRenders++;
+      const friends = store((s: S) => s.friends);
+      return <div>{friends.map((f) => f.name).join(", ")}</div>;
+    }
+
+    let constRenders = 0;
+    function ConstView() {
+      constRenders++;
+      const c = store((s: S) => s.constObj);
+      return <div>{c.str}</div>;
+    }
+
+    render(
+      <>
+        <MeView />
+        <FriendsView />
+        <ConstView />
+      </>
+    );
+    expect(meRenders).toBe(1);
+    expect(friendsRenders).toBe(1);
+    expect(constRenders).toBe(1);
+
+    let oldMe;
+    const friends = store.getState().friends;
+    const constObj = store.getState().constObj;
+
+    // we explicitly constructed a new me object, even though the content is the same
+    oldMe = store.getState().me;
+    act(() => {
+      store.getState().setMyName("Jay");
+    });
+
+    expect(store.getState().me).not.toBe(oldMe); // not the same object
+    expect(store.getState().friends).toBe(friends);
+    expect(store.getState().constObj).toBe(constObj);
+    // new object identity -> rerender
+    expect(meRenders).toBe(2);
+    expect(friendsRenders).toBe(1);
+    expect(constRenders).toBe(1);
+
+    // No actual change detected by immer
+    oldMe = store.getState().me;
+    act(() => {
+      store.getState().setMyNameImmer("Jay");
+    });
+
+    expect(store.getState().me).toBe(oldMe); // the SAME object! Draft had no actual value changes
+    expect(store.getState().friends).toBe(friends);
+    expect(store.getState().constObj).toBe(constObj);
+    // same identity -> no rerender
+    expect(meRenders).toBe(2);
+    expect(friendsRenders).toBe(1);
+    expect(constRenders).toBe(1);
+
+    // Actual change
+    oldMe = store.getState().me;
+    act(() => {
+      store.getState().setMyNameImmer("Joong-Won");
+    });
+
+    expect(store.getState().me).not.toBe(oldMe); // not the same object
+    expect(store.getState().friends).toBe(friends);
+    expect(store.getState().constObj).toBe(constObj);
+    // value changed -> rerender
+    expect(meRenders).toBe(3);
+    expect(friendsRenders).toBe(1);
+    expect(constRenders).toBe(1);
+
+    // Unrelated change: add a friend
+    const meAfterNameChange = store.getState().me;
+    const oldFriends = store.getState().friends;
+    const oldAlice = store.getState().friends[0];
+    act(() => {
+      store.getState().addFriend({ name: "Cara", age: 22 });
+    });
+    expect(store.getState().me).toBe(meAfterNameChange);
+    expect(store.getState().friends).not.toBe(oldFriends);
+    expect(store.getState().friends[0]).toBe(oldAlice); // other friend is unchanged
+    expect(store.getState().constObj).toBe(constObj);
+    expect(meRenders).toBe(3);
+    expect(friendsRenders).toBe(2);
+    expect(constRenders).toBe(1);
+
+    // Unrelated change: rename a friend
+    const oldFriends2 = store.getState().friends;
+    act(() => {
+      store.getState().renameFriend("Alice", "Alicia");
+    });
+    expect(store.getState().friends).not.toBe(oldFriends2);
+    expect(meRenders).toBe(3);
+    expect(friendsRenders).toBe(3);
+    expect(constRenders).toBe(1);
+
+    // New object with same value for const -> rerender due to identity change
+    const oldConst = store.getState().constObj;
+    act(() => {
+      store.getState().setConstNoopClone();
+    });
+    expect(store.getState().constObj).not.toBe(oldConst);
+    expect(meRenders).toBe(3);
+    expect(friendsRenders).toBe(3);
+    expect(constRenders).toBe(2);
+    // Immer same-value write -> no change, no rerender
+    const oldConst2 = store.getState().constObj;
+    act(() => {
+      store.getState().setConstWithSameViaImmer();
+    });
+    expect(store.getState().constObj).toBe(oldConst2);
+    expect(constRenders).toBe(2);
+    // Actual change via immer -> rerender
+    act(() => {
+      store.getState().setConstStr("World");
+    });
+    expect(constRenders).toBe(3);
   });
 
   test("remote patch updates nested fields and triggers selector rerender", async () => {

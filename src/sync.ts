@@ -1,6 +1,8 @@
 import { Operation as JsonPatch } from "fast-json-patch";
 import { Patch as ImmerPatch } from "immer";
+import { useEffect } from "react";
 import { Session } from "./session";
+import type { Actions } from "./zustand/utils";
 
 // parameters for the `sync()` operation
 export interface SyncParams {
@@ -13,6 +15,10 @@ export class Sync {
   readonly session: Session;
   private _patches: ImmerPatch[] = []; // currently unsynced local changes
   private _lastSyncTime: number = 0; // timestamp of last sync
+  private _actionHandlers: Map<
+    string,
+    (payload: Record<string, unknown>) => void
+  > = new Map();
 
   get lastSyncTime(): number {
     return this._lastSyncTime;
@@ -70,8 +76,8 @@ export class Sync {
   }
 
   // send the full state via _SET
-  public sendState(state: unknown): void {
-    this.session.send(setEvent(this.key), state as any);
+  public sendState<S>(state: S): void {
+    this.session.send(setEvent(this.key), state);
   }
 
   // Register session event handlers for a reducer-like consumer and return a cleanup function
@@ -86,17 +92,31 @@ export class Sync {
       this.sendState(getState())
     );
     // _SET replaces state
-    this.session.registerEvent(setEvent(this.key), (s: any) =>
-      setState(s as S)
-    );
+    this.session.registerEvent(setEvent(this.key), (s) => setState(s as S));
     // _PATCH applies a patch array
-    this.session.registerEvent(patchEvent(this.key), (p: any) =>
+    this.session.registerEvent(patchEvent(this.key), (p) =>
       patchState(p as JsonPatch[])
     );
-    // _ACTION forwards to provided handler (usually dispatch)
-    this.session.registerEvent(actionEvent(this.key), (a: any) =>
-      actionHandler(a as Action)
-    );
+    // _ACTION routes to dynamic handlers first, else forwards to provided handler (usually dispatch)
+    this.session.registerEvent(actionEvent(this.key), (a) => {
+      const act = a as Action;
+      const handler = this._actionHandlers.get(act.type);
+      if (handler) {
+        const payload: Record<string, unknown> = Object.fromEntries(
+          Object.entries(act).filter(([k]) => k !== "type")
+        );
+        try {
+          handler(payload);
+        } catch (err) {
+          console.error(
+            `[Sync] error invoking dynamic action handler for ${act.type}:`,
+            err
+          );
+        }
+      } else {
+        actionHandler(act);
+      }
+    });
 
     if (this.sendOnInit) {
       this.session.registerInit(this.key, () => this.sendState(getState()));
@@ -111,6 +131,74 @@ export class Sync {
         this.session.deregisterInit(this.key);
       }
     };
+  }
+
+  // Register multiple remote action handlers that take precedence over the catch-all
+  public registerExposedActions(
+    handlers: Record<string, (payload: Record<string, unknown>) => void>
+  ): () => void {
+    const registeredKeys: string[] = [];
+
+    // add to global registry, error if already present
+    for (const [key, fn] of Object.entries(handlers)) {
+      if (this._actionHandlers.has(key)) {
+        console.error(`[Sync] Attempt to re-register action handler: ${key}`);
+        throw new Error(`action handler already registered for ${key}`);
+      }
+      this._actionHandlers.set(key, fn);
+      registeredKeys.push(key);
+    }
+
+    // return cleanup to deregister only the keys we added
+    return () => {
+      for (const key of registeredKeys) {
+        this._actionHandlers.delete(key);
+      }
+    };
+  }
+
+  // React convenience: register/deregister within a useEffect
+  public useExposedActions(
+    handlers: Record<string, (payload: Record<string, unknown>) => void>
+  ): void {
+    useEffect(() => this.registerExposedActions(handlers), [this, handlers]);
+  }
+
+  // Create a set of delegator functions that forward to sendAction
+  public createDelegators<
+    KeyToParams extends Record<string, unknown>,
+    NameToKey extends { [N in keyof NameToKey]: keyof KeyToParams }
+  >(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
+  public createDelegators<KeyToParams extends Record<string, unknown>>(): <
+    NameToKey extends Record<string, keyof KeyToParams>
+  >(
+    nameToKey: NameToKey
+  ) => Actions<NameToKey, KeyToParams>;
+  public createDelegators<
+    KeyToParams extends Record<string, unknown>,
+    NameToKey extends Record<string, keyof KeyToParams>
+  >(nameToKey?: NameToKey) {
+    if (arguments.length === 0) {
+      return (ntk: NameToKey) =>
+        this.createDelegators<KeyToParams, NameToKey>(ntk);
+    }
+    const entries = Object.entries(nameToKey as NameToKey) as [
+      string,
+      keyof KeyToParams
+    ][];
+    const result = Object.fromEntries(
+      entries.map(([localName, remoteKey]) => {
+        const fn = (args?: Record<string, unknown> | null) => {
+          if (args === null || args === undefined) {
+            this.sendAction({ type: String(remoteKey) });
+          } else {
+            this.sendAction({ type: String(remoteKey), ...(args as object) });
+          }
+        };
+        return [localName, fn];
+      })
+    );
+    return result as Actions<NameToKey, KeyToParams>;
   }
 }
 

@@ -14,3 +14,4 @@ export { useRemoteToast } from "./remote-toast";
 export { DefaultSessionContext, Session, SessionProvider } from "./session";
 export { Action, TaskCancel, TaskStart } from "./sync";
 export { synced, SyncOptions } from "./zustand/synced-store";
+export { Actions } from "./zustand/utils";

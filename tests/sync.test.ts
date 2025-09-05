@@ -1,3 +1,5 @@
+import { render } from "@testing-library/react";
+import React from "react";
 import {
   Sync,
   actionEvent,
@@ -96,6 +98,99 @@ describe("Sync core behavior", () => {
   });
 });
 
+describe("Sync dynamic action handlers", () => {
+  test("registered dynamic handler takes precedence over catch-all", () => {
+    const session = new MockSession();
+    const sync = new Sync("DOC", session as any);
+
+    const getState = jest.fn(() => ({}));
+    const setState = jest.fn();
+    const patchState = jest.fn();
+    const catchAll = jest.fn();
+
+    sync.registerHandlers(getState, setState, patchState, catchAll);
+
+    const dyn = jest.fn();
+    const cleanup = sync.registerExposedActions({ SCROLL: dyn });
+
+    // Trigger action
+    session.events[actionEvent("DOC")]?.({ type: "SCROLL", a: 1 });
+    expect(dyn).toHaveBeenCalledWith({ a: 1 });
+    expect(catchAll).not.toHaveBeenCalled();
+
+    cleanup();
+  });
+
+  test("missing dynamic handler falls back to catch-all", () => {
+    const session = new MockSession();
+    const sync = new Sync("D2", session as any);
+    const catchAll = jest.fn();
+    sync.registerHandlers(() => ({} as any), jest.fn(), jest.fn(), catchAll);
+
+    session.events[actionEvent("D2")]?.({ type: "NOOP", p: true });
+    expect(catchAll).toHaveBeenCalledWith({ type: "NOOP", p: true });
+  });
+
+  test("cleanup deregisters dynamic handler and restores catch-all", () => {
+    const session = new MockSession();
+    const sync = new Sync("D3", session as any);
+    const catchAll = jest.fn();
+    sync.registerHandlers(() => ({} as any), jest.fn(), jest.fn(), catchAll);
+
+    const dyn = jest.fn();
+    const cleanup = sync.registerExposedActions({ A: dyn });
+
+    session.events[actionEvent("D3")]?.({ type: "A", q: 2 });
+    expect(dyn).toHaveBeenCalledTimes(1);
+    expect(catchAll).not.toHaveBeenCalled();
+
+    // After cleanup, should route to catch-all
+    cleanup();
+    session.events[actionEvent("D3")]?.({ type: "A", q: 3 });
+    expect(dyn).toHaveBeenCalledTimes(1);
+    expect(catchAll).toHaveBeenCalledWith({ type: "A", q: 3 });
+  });
+
+  test("duplicate registration throws", () => {
+    const session = new MockSession();
+    const sync = new Sync("D4", session as any);
+    sync.registerHandlers(() => ({} as any), jest.fn(), jest.fn(), jest.fn());
+
+    sync.registerExposedActions({ X: jest.fn() });
+    expect(() => sync.registerExposedActions({ X: jest.fn() })).toThrow();
+  });
+});
+
+describe("Sync.useExposedActions wrapper", () => {
+  test("registers on mount and cleans up on unmount", () => {
+    const session = new MockSession();
+    const sync = new Sync("HOOK", session as any);
+    const catchAll = jest.fn();
+
+    // Install router
+    sync.registerHandlers(() => ({} as any), jest.fn(), jest.fn(), catchAll);
+
+    const dyn = jest.fn();
+
+    function Harness() {
+      // Using the convenience wrapper inside a component
+      sync.useExposedActions({ SCROLL_TO_TOP: dyn });
+      return null;
+    }
+
+    const { unmount } = render(React.createElement(Harness));
+
+    // Routes to dynamic handler while mounted
+    session.events[actionEvent("HOOK")]?.({ type: "SCROLL_TO_TOP", z: 9 });
+    expect(dyn).toHaveBeenCalledWith({ z: 9 });
+    expect(catchAll).not.toHaveBeenCalled();
+
+    // Unmount -> wrapper cleanup removes handler
+    unmount();
+    session.events[actionEvent("HOOK")]?.({ type: "SCROLL_TO_TOP", z: 10 });
+    expect(catchAll).toHaveBeenCalledWith({ type: "SCROLL_TO_TOP", z: 10 });
+  });
+});
 describe("Sync.registerHandlers wiring", () => {
   test("registers handlers and invokes callbacks for GET/SET/PATCH/ACTION", () => {
     const session = new MockSession();
