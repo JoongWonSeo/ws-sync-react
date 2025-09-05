@@ -5,7 +5,7 @@ import {
   enablePatches,
   produceWithPatches
 } from "immer";
-import { useContext, useEffect as useEffect3, useMemo, useReducer } from "react";
+import { useContext, useEffect as useEffect4, useMemo, useReducer, useRef } from "react";
 
 // src/session.tsx
 import fileDownload from "js-file-download";
@@ -283,12 +283,12 @@ var Session = class {
     this.ws.onopen = () => {
       this.toast?.success(`Connected to ${this.label}!`);
       this.isConnected = true;
-      if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
+      this.onConnectionChange?.(this.isConnected);
       this.retryInterval = this.minRetryInterval;
     };
     this.ws.onclose = () => {
       this.isConnected = false;
-      if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
+      this.onConnectionChange?.(this.isConnected);
       if (this.autoReconnect) {
         this.toast?.warning(
           `Disconnected from ${this.label}: Retrying in ${this.retryInterval / 1e3} seconds...`
@@ -319,14 +319,18 @@ var Session = class {
     };
   }
   disconnect() {
+    const wasConnected = this.isConnected;
+    this.isConnected = false;
+    if (wasConnected) {
+      this.onConnectionChange?.(this.isConnected);
+    }
     this.autoReconnect = false;
-    this.ws?.close();
-    if (this.onConnectionChange) this.onConnectionChange(false);
     if (this.ws !== null) {
       this.ws.onopen = null;
       this.ws.onclose = null;
       this.ws.onmessage = null;
       this.ws.onerror = null;
+      this.ws.close();
       this.ws = null;
     }
     if (this.retryTimeout !== null) {
@@ -385,17 +389,19 @@ var Session = class {
 };
 
 // src/sync.ts
+import { useEffect as useEffect3 } from "react";
 var Sync = class {
   // ========== public methods ========== //
   constructor(key, session, sendOnInit = false) {
     this._patches = [];
     // currently unsynced local changes
     this._lastSyncTime = 0;
+    // timestamp of last sync
+    this._actionHandlers = /* @__PURE__ */ new Map();
     this.key = key;
     this.session = session;
     this.sendOnInit = sendOnInit;
   }
-  // timestamp of last sync
   get lastSyncTime() {
     return this._lastSyncTime;
   }
@@ -439,18 +445,30 @@ var Sync = class {
       getEvent(this.key),
       () => this.sendState(getState())
     );
-    this.session.registerEvent(
-      setEvent(this.key),
-      (s) => setState(s)
-    );
+    this.session.registerEvent(setEvent(this.key), (s) => setState(s));
     this.session.registerEvent(
       patchEvent(this.key),
       (p) => patchState(p)
     );
-    this.session.registerEvent(
-      actionEvent(this.key),
-      (a) => actionHandler(a)
-    );
+    this.session.registerEvent(actionEvent(this.key), (a) => {
+      const act = a;
+      const handler = this._actionHandlers.get(act.type);
+      if (handler) {
+        const payload = Object.fromEntries(
+          Object.entries(act).filter(([k]) => k !== "type")
+        );
+        try {
+          handler(payload);
+        } catch (err) {
+          console.error(
+            `[Sync] error invoking dynamic action handler for ${act.type}:`,
+            err
+          );
+        }
+      } else {
+        actionHandler(act);
+      }
+    });
     if (this.sendOnInit) {
       this.session.registerInit(this.key, () => this.sendState(getState()));
     }
@@ -463,6 +481,46 @@ var Sync = class {
         this.session.deregisterInit(this.key);
       }
     };
+  }
+  // Register multiple remote action handlers that take precedence over the catch-all
+  registerExposedActions(handlers) {
+    const registeredKeys = [];
+    for (const [key, fn] of Object.entries(handlers)) {
+      if (this._actionHandlers.has(key)) {
+        console.error(`[Sync] Attempt to re-register action handler: ${key}`);
+        throw new Error(`action handler already registered for ${key}`);
+      }
+      this._actionHandlers.set(key, fn);
+      registeredKeys.push(key);
+    }
+    return () => {
+      for (const key of registeredKeys) {
+        this._actionHandlers.delete(key);
+      }
+    };
+  }
+  // React convenience: register/deregister within a useEffect
+  useExposedActions(handlers) {
+    useEffect3(() => this.registerExposedActions(handlers), [this, handlers]);
+  }
+  createDelegators(nameToKey) {
+    if (arguments.length === 0) {
+      return (ntk) => this.createDelegators(ntk);
+    }
+    const entries = Object.entries(nameToKey);
+    const result = Object.fromEntries(
+      entries.map(([localName, remoteKey]) => {
+        const fn = (args) => {
+          if (args === null || args === void 0) {
+            this.sendAction({ type: String(remoteKey) });
+          } else {
+            this.sendAction({ type: String(remoteKey), ...args });
+          }
+        };
+        return [localName, fn];
+      })
+    );
+    return result;
   }
 };
 var setEvent = (key) => "_SET:" + key;
@@ -558,7 +616,7 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
     initialState,
     []
   ]);
-  useEffect3(() => {
+  useEffect4(() => {
     if (effects.length === 0) return;
     effects.forEach((f) => f());
     effects.splice(0, effects.length);
@@ -572,14 +630,16 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
   const actionState = (action) => {
     dispatch(action);
   };
-  useEffect3(() => {
+  const latestStateRef = useRef(state);
+  latestStateRef.current = state;
+  useEffect4(() => {
     return syncObj.registerHandlers(
-      () => state,
+      () => latestStateRef.current,
       setState,
       patchState,
       actionState
     );
-  }, [syncObj, state]);
+  }, [syncObj]);
   const setters = useMemo(() => {
     const result = {};
     Object.keys(initialState).forEach((attr) => {
@@ -652,9 +712,9 @@ function useObserved(key, initialState, overrideSession = null) {
 }
 
 // src/remote-toast.ts
-import { useEffect as useEffect4 } from "react";
+import { useEffect as useEffect5 } from "react";
 var useRemoteToast = (session, toast, prefix = "") => {
-  useEffect4(() => {
+  useEffect5(() => {
     session?.registerEvent("_TOAST", ({ message, type }) => {
       switch (type) {
         case "default":
@@ -686,8 +746,8 @@ var useRemoteToast = (session, toast, prefix = "") => {
 };
 
 // src/zustand/synced-store.ts
+import { applyReducer as applyReducer2, deepClone as deepClone2 } from "fast-json-patch";
 import { enablePatches as enablePatches2, produceWithPatches as produceWithPatches2 } from "immer";
-import { create } from "zustand";
 import "zustand/middleware";
 enablePatches2();
 var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
@@ -697,16 +757,6 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
     syncOptions.session,
     syncOptions.sendOnInit
   );
-  const callableSync = syncObj.sync.bind(syncObj);
-  Object.assign(callableSync, {
-    appendPatch: syncObj.appendPatch.bind(syncObj),
-    sendAction: syncObj.sendAction.bind(syncObj),
-    startTask: syncObj.startTask.bind(syncObj),
-    cancelTask: syncObj.cancelTask.bind(syncObj),
-    sendBinary: syncObj.sendBinary.bind(syncObj),
-    delegate: {}
-  });
-  newStore.sync = callableSync;
   store.setState = (updater, replace, ...args) => {
     if (typeof updater === "function") {
       const userFn = updater;
@@ -718,44 +768,58 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
       };
       const newStateCreator = produceWithPatches2(producer);
       const [newState, patches] = newStateCreator(get());
-      newStore.sync.appendPatch(patches);
+      syncObj.appendPatch(patches);
       return set(newState, replace, ...args);
     } else {
       const newState = updater;
-      newStore.sync.appendPatch(
+      syncObj.appendPatch(
         convertShallowUpdateToImmerPatch(newState)
       );
       return set(newState, replace, ...args);
     }
   };
-  const initialState = stateCreator(store.setState, get, newStore);
-  return initialState;
+  const cleanup = syncObj.registerHandlers(
+    () => get(),
+    (s) => {
+      set(s, true);
+    },
+    (patches) => {
+      const next = patches.reduce(applyReducer2, deepClone2(get()));
+      set(next, true);
+    },
+    (action) => {
+      const currentState = get();
+      const handler = currentState[action.type];
+      if (typeof handler === "function") {
+        const payload = { ...action };
+        delete payload.type;
+        try {
+          handler(payload);
+        } catch (err) {
+          console.error(
+            `[zustand synced] error invoking action handler for ${action.type}:`,
+            err
+          );
+        }
+      }
+    }
+  );
+  const callableSync = syncObj.sync.bind(syncObj);
+  callableSync.obj = syncObj;
+  callableSync.cleanup = cleanup;
+  callableSync.createDelegators = syncObj.createDelegators.bind(syncObj);
+  callableSync.sendAction = syncObj.sendAction.bind(syncObj);
+  callableSync.startTask = syncObj.startTask.bind(syncObj);
+  callableSync.cancelTask = syncObj.cancelTask.bind(syncObj);
+  callableSync.sendBinary = syncObj.sendBinary.bind(syncObj);
+  callableSync.fetchRemoteState = syncObj.fetchRemoteState.bind(syncObj);
+  callableSync.sendState = syncObj.sendState.bind(syncObj);
+  callableSync.registerExposedActions = syncObj.registerExposedActions.bind(syncObj);
+  callableSync.useExposedActions = syncObj.useExposedActions.bind(syncObj);
+  newStore.sync = callableSync;
+  return stateCreator(store.setState, get, newStore);
 };
 var synced = syncedImpl;
-var useBearStore = create()(
-  synced(
-    (set, get, store) => ({
-      // the state
-      bears: 0,
-      // access the store.sync from "inside"
-      setBears: () => {
-        set((state) => {
-          state.bears += 1;
-        });
-        store.sync({ debounceMs: 1e3 });
-      },
-      resetBears: (args) => {
-        store.sync.sendAction({ type: "resetBears", ...args });
-      }
-      // resetBears: (args) => {
-      //   delegate.resetBears(args);
-      // },
-      // or: resetBears: delegate.resetBears
-    }),
-    { key: "bear", session: new Session("ws://localhost") }
-  )
-);
-console.log(useBearStore.sync());
 export {
   DefaultSessionContext,
   Session,

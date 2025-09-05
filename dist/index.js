@@ -44,7 +44,7 @@ module.exports = __toCommonJS(index_exports);
 // src/react/synced-reducer.ts
 var import_fast_json_patch = require("fast-json-patch");
 var import_immer = require("immer");
-var import_react3 = require("react");
+var import_react4 = require("react");
 
 // src/session.tsx
 var import_js_file_download = __toESM(require("js-file-download"));
@@ -322,12 +322,12 @@ var Session = class {
     this.ws.onopen = () => {
       this.toast?.success(`Connected to ${this.label}!`);
       this.isConnected = true;
-      if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
+      this.onConnectionChange?.(this.isConnected);
       this.retryInterval = this.minRetryInterval;
     };
     this.ws.onclose = () => {
       this.isConnected = false;
-      if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
+      this.onConnectionChange?.(this.isConnected);
       if (this.autoReconnect) {
         this.toast?.warning(
           `Disconnected from ${this.label}: Retrying in ${this.retryInterval / 1e3} seconds...`
@@ -358,14 +358,18 @@ var Session = class {
     };
   }
   disconnect() {
+    const wasConnected = this.isConnected;
+    this.isConnected = false;
+    if (wasConnected) {
+      this.onConnectionChange?.(this.isConnected);
+    }
     this.autoReconnect = false;
-    this.ws?.close();
-    if (this.onConnectionChange) this.onConnectionChange(false);
     if (this.ws !== null) {
       this.ws.onopen = null;
       this.ws.onclose = null;
       this.ws.onmessage = null;
       this.ws.onerror = null;
+      this.ws.close();
       this.ws = null;
     }
     if (this.retryTimeout !== null) {
@@ -424,17 +428,19 @@ var Session = class {
 };
 
 // src/sync.ts
+var import_react3 = require("react");
 var Sync = class {
   // ========== public methods ========== //
   constructor(key, session, sendOnInit = false) {
     this._patches = [];
     // currently unsynced local changes
     this._lastSyncTime = 0;
+    // timestamp of last sync
+    this._actionHandlers = /* @__PURE__ */ new Map();
     this.key = key;
     this.session = session;
     this.sendOnInit = sendOnInit;
   }
-  // timestamp of last sync
   get lastSyncTime() {
     return this._lastSyncTime;
   }
@@ -478,18 +484,30 @@ var Sync = class {
       getEvent(this.key),
       () => this.sendState(getState())
     );
-    this.session.registerEvent(
-      setEvent(this.key),
-      (s) => setState(s)
-    );
+    this.session.registerEvent(setEvent(this.key), (s) => setState(s));
     this.session.registerEvent(
       patchEvent(this.key),
       (p) => patchState(p)
     );
-    this.session.registerEvent(
-      actionEvent(this.key),
-      (a) => actionHandler(a)
-    );
+    this.session.registerEvent(actionEvent(this.key), (a) => {
+      const act = a;
+      const handler = this._actionHandlers.get(act.type);
+      if (handler) {
+        const payload = Object.fromEntries(
+          Object.entries(act).filter(([k]) => k !== "type")
+        );
+        try {
+          handler(payload);
+        } catch (err) {
+          console.error(
+            `[Sync] error invoking dynamic action handler for ${act.type}:`,
+            err
+          );
+        }
+      } else {
+        actionHandler(act);
+      }
+    });
     if (this.sendOnInit) {
       this.session.registerInit(this.key, () => this.sendState(getState()));
     }
@@ -502,6 +520,46 @@ var Sync = class {
         this.session.deregisterInit(this.key);
       }
     };
+  }
+  // Register multiple remote action handlers that take precedence over the catch-all
+  registerExposedActions(handlers) {
+    const registeredKeys = [];
+    for (const [key, fn] of Object.entries(handlers)) {
+      if (this._actionHandlers.has(key)) {
+        console.error(`[Sync] Attempt to re-register action handler: ${key}`);
+        throw new Error(`action handler already registered for ${key}`);
+      }
+      this._actionHandlers.set(key, fn);
+      registeredKeys.push(key);
+    }
+    return () => {
+      for (const key of registeredKeys) {
+        this._actionHandlers.delete(key);
+      }
+    };
+  }
+  // React convenience: register/deregister within a useEffect
+  useExposedActions(handlers) {
+    (0, import_react3.useEffect)(() => this.registerExposedActions(handlers), [this, handlers]);
+  }
+  createDelegators(nameToKey) {
+    if (arguments.length === 0) {
+      return (ntk) => this.createDelegators(ntk);
+    }
+    const entries = Object.entries(nameToKey);
+    const result = Object.fromEntries(
+      entries.map(([localName, remoteKey]) => {
+        const fn = (args) => {
+          if (args === null || args === void 0) {
+            this.sendAction({ type: String(remoteKey) });
+          } else {
+            this.sendAction({ type: String(remoteKey), ...args });
+          }
+        };
+        return [localName, fn];
+      })
+    );
+    return result;
   }
 };
 var setEvent = (key) => "_SET:" + key;
@@ -535,13 +593,13 @@ var convertShallowUpdateToImmerPatch = (shallowUpdate) => {
 // src/react/synced-reducer.ts
 (0, import_immer.enablePatches)();
 function useSyncedReducer(key, syncedReducer, initialState, overrideSession = null, sendOnInit = false) {
-  const session = overrideSession ?? (0, import_react3.useContext)(DefaultSessionContext);
+  const session = overrideSession ?? (0, import_react4.useContext)(DefaultSessionContext);
   if (!session) {
     throw new Error(
       "useSyncedReducer requires a Session from context or overrideSession"
     );
   }
-  const syncObj = (0, import_react3.useMemo)(
+  const syncObj = (0, import_react4.useMemo)(
     () => new Sync(key, session, sendOnInit),
     [session, key, sendOnInit]
   );
@@ -593,11 +651,11 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
       }
     }
   };
-  const [[state, effects], dispatch] = (0, import_react3.useReducer)(wrappedReducer, [
+  const [[state, effects], dispatch] = (0, import_react4.useReducer)(wrappedReducer, [
     initialState,
     []
   ]);
-  (0, import_react3.useEffect)(() => {
+  (0, import_react4.useEffect)(() => {
     if (effects.length === 0) return;
     effects.forEach((f) => f());
     effects.splice(0, effects.length);
@@ -611,15 +669,17 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
   const actionState = (action) => {
     dispatch(action);
   };
-  (0, import_react3.useEffect)(() => {
+  const latestStateRef = (0, import_react4.useRef)(state);
+  latestStateRef.current = state;
+  (0, import_react4.useEffect)(() => {
     return syncObj.registerHandlers(
-      () => state,
+      () => latestStateRef.current,
       setState,
       patchState,
       actionState
     );
-  }, [syncObj, state]);
-  const setters = (0, import_react3.useMemo)(() => {
+  }, [syncObj]);
+  const setters = (0, import_react4.useMemo)(() => {
     const result = {};
     Object.keys(initialState).forEach((attr) => {
       const attrStr = String(attr);
@@ -646,7 +706,7 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
     });
     return result;
   }, [initialState, patchState, key, session, syncObj]);
-  const stateWithSync = (0, import_react3.useMemo)(
+  const stateWithSync = (0, import_react4.useMemo)(
     () => ({
       ...state,
       ...setters,
@@ -679,7 +739,7 @@ function useObserved(key, initialState, overrideSession = null) {
     overrideSession,
     false
   );
-  const readonlyState = (0, import_react3.useMemo)(() => {
+  const readonlyState = (0, import_react4.useMemo)(() => {
     const result = {};
     Object.keys(initialState).forEach((k) => {
       result[k] = stateWithSync[k];
@@ -691,9 +751,9 @@ function useObserved(key, initialState, overrideSession = null) {
 }
 
 // src/remote-toast.ts
-var import_react4 = require("react");
+var import_react5 = require("react");
 var useRemoteToast = (session, toast, prefix = "") => {
-  (0, import_react4.useEffect)(() => {
+  (0, import_react5.useEffect)(() => {
     session?.registerEvent("_TOAST", ({ message, type }) => {
       switch (type) {
         case "default":
@@ -725,8 +785,8 @@ var useRemoteToast = (session, toast, prefix = "") => {
 };
 
 // src/zustand/synced-store.ts
+var import_fast_json_patch2 = require("fast-json-patch");
 var import_immer2 = require("immer");
-var import_zustand = require("zustand");
 var import_middleware = require("zustand/middleware");
 (0, import_immer2.enablePatches)();
 var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
@@ -736,16 +796,6 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
     syncOptions.session,
     syncOptions.sendOnInit
   );
-  const callableSync = syncObj.sync.bind(syncObj);
-  Object.assign(callableSync, {
-    appendPatch: syncObj.appendPatch.bind(syncObj),
-    sendAction: syncObj.sendAction.bind(syncObj),
-    startTask: syncObj.startTask.bind(syncObj),
-    cancelTask: syncObj.cancelTask.bind(syncObj),
-    sendBinary: syncObj.sendBinary.bind(syncObj),
-    delegate: {}
-  });
-  newStore.sync = callableSync;
   store.setState = (updater, replace, ...args) => {
     if (typeof updater === "function") {
       const userFn = updater;
@@ -757,44 +807,58 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
       };
       const newStateCreator = (0, import_immer2.produceWithPatches)(producer);
       const [newState, patches] = newStateCreator(get());
-      newStore.sync.appendPatch(patches);
+      syncObj.appendPatch(patches);
       return set(newState, replace, ...args);
     } else {
       const newState = updater;
-      newStore.sync.appendPatch(
+      syncObj.appendPatch(
         convertShallowUpdateToImmerPatch(newState)
       );
       return set(newState, replace, ...args);
     }
   };
-  const initialState = stateCreator(store.setState, get, newStore);
-  return initialState;
+  const cleanup = syncObj.registerHandlers(
+    () => get(),
+    (s) => {
+      set(s, true);
+    },
+    (patches) => {
+      const next = patches.reduce(import_fast_json_patch2.applyReducer, (0, import_fast_json_patch2.deepClone)(get()));
+      set(next, true);
+    },
+    (action) => {
+      const currentState = get();
+      const handler = currentState[action.type];
+      if (typeof handler === "function") {
+        const payload = { ...action };
+        delete payload.type;
+        try {
+          handler(payload);
+        } catch (err) {
+          console.error(
+            `[zustand synced] error invoking action handler for ${action.type}:`,
+            err
+          );
+        }
+      }
+    }
+  );
+  const callableSync = syncObj.sync.bind(syncObj);
+  callableSync.obj = syncObj;
+  callableSync.cleanup = cleanup;
+  callableSync.createDelegators = syncObj.createDelegators.bind(syncObj);
+  callableSync.sendAction = syncObj.sendAction.bind(syncObj);
+  callableSync.startTask = syncObj.startTask.bind(syncObj);
+  callableSync.cancelTask = syncObj.cancelTask.bind(syncObj);
+  callableSync.sendBinary = syncObj.sendBinary.bind(syncObj);
+  callableSync.fetchRemoteState = syncObj.fetchRemoteState.bind(syncObj);
+  callableSync.sendState = syncObj.sendState.bind(syncObj);
+  callableSync.registerExposedActions = syncObj.registerExposedActions.bind(syncObj);
+  callableSync.useExposedActions = syncObj.useExposedActions.bind(syncObj);
+  newStore.sync = callableSync;
+  return stateCreator(store.setState, get, newStore);
 };
 var synced = syncedImpl;
-var useBearStore = (0, import_zustand.create)()(
-  synced(
-    (set, get, store) => ({
-      // the state
-      bears: 0,
-      // access the store.sync from "inside"
-      setBears: () => {
-        set((state) => {
-          state.bears += 1;
-        });
-        store.sync({ debounceMs: 1e3 });
-      },
-      resetBears: (args) => {
-        store.sync.sendAction({ type: "resetBears", ...args });
-      }
-      // resetBears: (args) => {
-      //   delegate.resetBears(args);
-      // },
-      // or: resetBears: delegate.resetBears
-    }),
-    { key: "bear", session: new Session("ws://localhost") }
-  )
-);
-console.log(useBearStore.sync());
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   DefaultSessionContext,

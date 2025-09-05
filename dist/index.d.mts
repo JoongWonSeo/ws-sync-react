@@ -47,6 +47,37 @@ declare class Session {
     handleReceiveEvent(e: MessageEvent): void;
 }
 
+/**
+ * Utility type that creates action functions from a mapping of action names to parameter types.
+ *
+ * @template NameToKey - Maps action names to parameter type keys
+ * @template KeyToParams - Maps parameter type keys to their actual parameter types
+ *
+ * @example
+ * ```typescript
+ *
+ * type ActionsKeys = {
+ *   select: 'SELECT_NOTE';
+ *   clear: 'CLEAR_SELECTION';
+ * };
+ * type ActionsParams = {
+ *   SELECT_NOTE: { id: string };
+ *   CLEAR_SELECTION: null;
+ * };
+ *
+ * type MyActions = Actions<ActionsKeys, ActionsParams>;
+ * // Result: {
+ * //   select: (args: { id: string }) => void;
+ * //   clear: () => void;
+ * // }
+ * ```
+ */
+type Actions<NameToKey extends {
+    [N in keyof NameToKey]: keyof KeyToParams;
+}, KeyToParams> = {
+    [N in keyof NameToKey]: KeyToParams[NameToKey[N]] extends null ? () => void : (args: KeyToParams[NameToKey[N]]) => void;
+};
+
 interface SyncParams {
     debounceMs?: number;
 }
@@ -56,6 +87,7 @@ declare class Sync$2 {
     readonly session: Session;
     private _patches;
     private _lastSyncTime;
+    private _actionHandlers;
     get lastSyncTime(): number;
     constructor(key: string, session: Session, sendOnInit?: boolean);
     sync(): void;
@@ -65,8 +97,14 @@ declare class Sync$2 {
     cancelTask(task: TaskCancel): void;
     sendBinary(action: Action, data: ArrayBuffer): void;
     fetchRemoteState(): void;
-    sendState(state: unknown): void;
+    sendState<S>(state: S): void;
     registerHandlers<S>(getState: () => S, setState: (state: S) => void, patchState: (patch: Operation[]) => void, actionHandler: (action: Action) => void): () => void;
+    registerExposedActions(handlers: Record<string, (payload: Record<string, unknown>) => void>): () => void;
+    useExposedActions(handlers: Record<string, (payload: Record<string, unknown>) => void>): void;
+    createDelegators<KeyToParams extends Record<string, unknown>, NameToKey extends {
+        [N in keyof NameToKey]: keyof KeyToParams;
+    }>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
+    createDelegators<KeyToParams extends Record<string, unknown>>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Actions<NameToKey, KeyToParams>;
 }
 type Action = {
     type: string;
@@ -129,9 +167,23 @@ interface SyncOptions {
     session: Session;
     sendOnInit?: boolean;
 }
-type Sync = Sync$2 & {
+type CreateDelegatorsFn = {
+    <KeyToParams extends Record<string, unknown>>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Actions<NameToKey, KeyToParams>;
+    <KeyToParams extends Record<string, unknown>, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
+};
+type Sync = {
+    obj: Sync$2;
+    cleanup: () => void;
     (params?: SyncParams): void;
-    delegate: any;
+    createDelegators: CreateDelegatorsFn;
+    sendAction: (action: Action) => void;
+    startTask: (task: TaskStart) => void;
+    cancelTask: (task: TaskCancel) => void;
+    sendBinary: (action: Action, data: ArrayBuffer) => void;
+    fetchRemoteState: () => void;
+    sendState: <S>(state: S) => void;
+    registerExposedActions: (handlers: Record<string, (payload: Record<string, unknown>) => void>) => () => void;
+    useExposedActions: (handlers: Record<string, (payload: Record<string, unknown>) => void>) => void;
 };
 type Synced = <State, Mps extends [StoreMutatorIdentifier, unknown][] = [], // store mutators from parent middlewares
 Mcs extends [StoreMutatorIdentifier, unknown][] = []>(stateCreator: StateCreator<State, [...Mps, ["sync", Sync]], Mcs>, // forward the mutators from our parent middlewares along with our mutation to the child middleware
@@ -145,4 +197,4 @@ declare module "zustand/vanilla" {
 }
 declare const synced: Synced;
 
-export { type Action, DefaultSessionContext, type Delegate, Session, SessionProvider, type StateWithFetch, type StateWithSync, type Sync$1 as Sync, type SyncOptions, type SyncedReducer, type TaskCancel, type TaskStart, synced, useObserved, useRemoteToast, useSynced, useSyncedReducer };
+export { type Action, type Actions, DefaultSessionContext, type Delegate, Session, SessionProvider, type StateWithFetch, type StateWithSync, type Sync$1 as Sync, type SyncOptions, type SyncedReducer, type TaskCancel, type TaskStart, synced, useObserved, useRemoteToast, useSynced, useSyncedReducer };
