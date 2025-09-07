@@ -170,17 +170,19 @@ const syncedImpl: SyncedImpl =
         };
         const newStateCreator = produceWithPatches(producer as any);
         // apply the producer to the current state, save the patches
-        const [newState, patches] = newStateCreator(get());
-        // save the patches, so that they can be synced later
-        syncObj.appendPatch(patches);
+        const current = get();
+        const [newState, patches] = newStateCreator(current);
+        // save the patches with base snapshot for optional compression
+        syncObj.appendPatch(patches, current as unknown as object);
 
         return set(newState as State, replace as any, ...args);
       } else {
         // new state is already given, convert to patch
         const newState = updater;
-        // save as patch, so that it can be synced later
+        // save as patch with base snapshot, so that it can be synced later
         syncObj.appendPatch(
-          convertShallowUpdateToImmerPatch(newState as Record<string, any>)
+          convertShallowUpdateToImmerPatch(newState as Record<string, any>),
+          get() as unknown as object
         );
 
         return set(newState, replace as any, ...args);

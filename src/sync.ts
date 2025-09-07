@@ -1,12 +1,19 @@
 import { Operation as JsonPatch } from "fast-json-patch";
-import { Patch as ImmerPatch } from "immer";
+import {
+  Patch as ImmerPatch,
+  applyPatches,
+  enablePatches,
+  produce,
+} from "immer";
 import { useEffect } from "react";
 import { Session } from "./session";
 import type { Actions } from "./zustand/utils";
+enablePatches();
 
 // parameters for the `sync()` operation
 export interface SyncParams {
   debounceMs?: number;
+  maxWaitMs?: number;
 }
 
 export class Sync {
@@ -15,7 +22,17 @@ export class Sync {
   readonly session: Session;
   private _patches: ImmerPatch[] = []; // currently unsynced local changes
   private _lastSyncTime: number = 0; // timestamp of last sync
-  private _actionHandlers: Map<string, (...args: any[]) => void> = new Map();
+  private _actionHandlers: Map<
+    string,
+    (payload: Record<string, unknown>) => void
+  > = new Map();
+  private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
+  private _firstPatchAt: number | null = null;
+  private _baseSnapshot: unknown | null = null;
+
+  // If not null, compress when patch count >= threshold
+  public compressThreshold: number | null = 5;
 
   get lastSyncTime(): number {
     return this._lastSyncTime;
@@ -33,11 +50,62 @@ export class Sync {
   }
 
   // flush the pending local changes to the server
-  public sync(): void {
-    // TODO: debounce logic: queue the sync
+  public sync(params?: SyncParams): void {
+    const debounceMs = params?.debounceMs ?? 0;
+    const maxWaitMs = params?.maxWaitMs ?? 0;
 
-    // send the patches to the server and flush
+    // If no debounce requested, flush immediately
+    if (debounceMs <= 0) {
+      this.flush();
+      return;
+    }
+
+    // Only schedule timers if there is something to send
+    if (this._patches.length === 0) {
+      return;
+    }
+
+    // Track the first patch time for maxWait enforcement
+    if (this._firstPatchAt === null) {
+      this._firstPatchAt = Date.now();
+    }
+
+    // Debounce timer (resets on each call)
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+    }
+    this._debounceTimer = setTimeout(() => this.flush(), debounceMs);
+
+    // Max-wait absolute timer (fires once at firstPatch + maxWaitMs)
+    if (maxWaitMs > 0 && this._maxWaitTimer === null && this._firstPatchAt) {
+      const now = Date.now();
+      const fireAt = this._firstPatchAt + maxWaitMs;
+      const delay = Math.max(0, fireAt - now);
+      this._maxWaitTimer = setTimeout(() => this.flush(), delay);
+    }
+  }
+
+  public flush(): void {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
+    if (this._maxWaitTimer) {
+      clearTimeout(this._maxWaitTimer);
+      this._maxWaitTimer = null;
+    }
     if (this._patches.length > 0) {
+      // Optionally compress patches before sending
+      if (
+        this.compressThreshold !== null &&
+        this._patches.length >= this.compressThreshold &&
+        this._baseSnapshot !== null
+      ) {
+        this._patches = this.compressImmerPatches(
+          this._baseSnapshot,
+          this._patches
+        );
+      }
       this.session.send(
         patchEvent(this.key),
         convertImmerPatchesToJsonPatch(this._patches)
@@ -45,10 +113,40 @@ export class Sync {
       this._lastSyncTime = Date.now();
       this._patches = [];
     }
+    this._firstPatchAt = null;
+    this._baseSnapshot = null;
   }
 
-  public appendPatch(patches: ImmerPatch[]): void {
+  public appendPatch(patches: ImmerPatch[], baseState?: unknown): void {
     this._patches.push(...patches);
+    if (this._firstPatchAt === null && patches.length > 0) {
+      this._firstPatchAt = Date.now();
+      if (baseState !== undefined) {
+        // capture base snapshot once for compression
+        this._baseSnapshot = baseState;
+      }
+    }
+  }
+
+  // Compress Immer patches by re-applying them to the captured base and
+  // re-emitting a minimal patch set for the net effect.
+  private compressImmerPatches(
+    baseState: unknown,
+    patches: ImmerPatch[]
+  ): ImmerPatch[] {
+    let compressed: ImmerPatch[] = patches;
+    // applyPatches mutates draft to the final shape; the third arg of produce
+    // collects the resulting minimal patch set relative to baseState
+    produce(
+      baseState as any,
+      (draft: any) => {
+        applyPatches(draft, patches as any);
+      },
+      (p: ImmerPatch[]) => {
+        compressed = p;
+      }
+    );
+    return compressed;
   }
 
   public sendAction(action: Action): void {
@@ -144,8 +242,9 @@ export class Sync {
         throw new Error(`action handler already registered for ${key}`);
       }
       // Store in the generic handler registry
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this._actionHandlers.set(key, fn as (...args: any[]) => void);
+      this._actionHandlers.set(key, ((payload: Record<string, unknown>) =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (fn as any)(payload)) as (payload: Record<string, unknown>) => void);
       registeredKeys.push(key);
     }
 
