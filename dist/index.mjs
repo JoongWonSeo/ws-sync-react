@@ -394,7 +394,7 @@ import {
   enablePatches,
   produce
 } from "immer";
-import { useEffect as useEffect3 } from "react";
+import { useEffect as useEffect3, useSyncExternalStore } from "react";
 enablePatches();
 var Sync = class {
   // ========== public methods ========== //
@@ -408,8 +408,16 @@ var Sync = class {
     this._maxWaitTimer = null;
     this._firstPatchAt = null;
     this._baseSnapshot = null;
+    this._isSyncedSubscribers = /* @__PURE__ */ new Set();
     // If not null, compress when patch count >= threshold
     this.compressThreshold = 5;
+    // ======== syncing state subscription + hook ======== //
+    this._subscribeIsSynced = (onStoreChange) => {
+      this._isSyncedSubscribers.add(onStoreChange);
+      return () => {
+        this._isSyncedSubscribers.delete(onStoreChange);
+      };
+    };
     this.key = key;
     this.session = session;
     this.sendOnInit = sendOnInit;
@@ -464,17 +472,23 @@ var Sync = class {
       );
       this._lastSyncTime = Date.now();
       this._patches = [];
+      this._emitIsSyncedChanged();
     }
     this._firstPatchAt = null;
     this._baseSnapshot = null;
   }
   appendPatch(patches, baseState) {
+    const wasSynced = this._patches.length === 0;
     this._patches.push(...patches);
     if (this._firstPatchAt === null && patches.length > 0) {
       this._firstPatchAt = Date.now();
-      if (baseState !== void 0) {
+      if (baseState !== void 0 && typeof baseState === "object" && baseState !== null) {
         this._baseSnapshot = baseState;
       }
+    }
+    const isSynced = this._patches.length === 0;
+    if (wasSynced !== isSynced) {
+      this._emitIsSyncedChanged();
     }
   }
   // Compress Immer patches by re-applying them to the captured base and
@@ -578,6 +592,23 @@ var Sync = class {
   // React convenience: register/deregister within a useEffect
   useExposedActions(handlers) {
     useEffect3(() => this.registerExposedActions(handlers), [this, handlers]);
+  }
+  _emitIsSyncedChanged() {
+    for (const cb of this._isSyncedSubscribers) {
+      try {
+        cb();
+      } catch (err) {
+        console.error("[Sync] error in isSynced subscriber", err);
+      }
+    }
+  }
+  // React convenience: returns true when no patches are pending to be flushed
+  useIsSynced() {
+    return useSyncExternalStore(
+      this._subscribeIsSynced,
+      () => this._patches.length === 0,
+      () => true
+    );
   }
   createDelegators(nameToKey) {
     if (arguments.length === 0) {
@@ -894,6 +925,7 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
   callableSync.sendState = syncObj.sendState.bind(syncObj);
   callableSync.registerExposedActions = syncObj.registerExposedActions.bind(syncObj);
   callableSync.useExposedActions = syncObj.useExposedActions.bind(syncObj);
+  callableSync.useIsSynced = syncObj.useIsSynced.bind(syncObj);
   newStore.sync = callableSync;
   return stateCreator(store.setState, get, newStore);
 };

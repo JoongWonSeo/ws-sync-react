@@ -93,6 +93,7 @@ declare class Sync$2 {
     private _maxWaitTimer;
     private _firstPatchAt;
     private _baseSnapshot;
+    private _isSyncedSubscribers;
     compressThreshold: number | null;
     get lastSyncTime(): number;
     constructor(key: string, session: Session, sendOnInit?: boolean);
@@ -109,6 +110,9 @@ declare class Sync$2 {
     registerHandlers<S>(getState: () => S, setState: (state: S) => void, patchState: (patch: Operation[]) => void, actionHandler: (action: Action) => void): () => void;
     registerExposedActions<Handlers extends Record<string, (...args: any[]) => void>>(handlers: Handlers): () => void;
     useExposedActions<Handlers extends Record<string, (...args: any[]) => void>>(handlers: Handlers): void;
+    private _subscribeIsSynced;
+    private _emitIsSyncedChanged;
+    useIsSynced(): boolean;
     createDelegators<KeyToParams extends object, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
     createDelegators<KeyToParams extends object>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Actions<NameToKey, KeyToParams>;
 }
@@ -190,6 +194,7 @@ type Sync = {
     sendState: <S>(state: S) => void;
     registerExposedActions: <Handlers extends Record<string, (...args: any[]) => void>>(handlers: Handlers) => () => void;
     useExposedActions: <Handlers extends Record<string, (...args: any[]) => void>>(handlers: Handlers) => void;
+    useIsSynced: () => boolean;
 };
 type Synced = <State, Mps extends [StoreMutatorIdentifier, unknown][] = [], // store mutators from parent middlewares
 Mcs extends [StoreMutatorIdentifier, unknown][] = []>(stateCreator: StateCreator<State, [...Mps, ["sync", Sync]], Mcs>, // forward the mutators from our parent middlewares along with our mutation to the child middleware
