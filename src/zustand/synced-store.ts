@@ -119,6 +119,7 @@ type Sync = {
   >(
     handlers: Handlers
   ) => void;
+  useIsSynced: () => boolean;
 };
 
 type Synced = <
@@ -236,6 +237,7 @@ const syncedImpl: SyncedImpl =
     callableSync.registerExposedActions =
       syncObj.registerExposedActions.bind(syncObj);
     callableSync.useExposedActions = syncObj.useExposedActions.bind(syncObj);
+    callableSync.useIsSynced = syncObj.useIsSynced.bind(syncObj);
 
     newStore.sync = callableSync;
 

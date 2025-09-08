@@ -2,7 +2,7 @@
 import { applyReducer, deepClone } from "fast-json-patch";
 import {
   castImmutable,
-  enablePatches,
+  enablePatches as enablePatches2,
   produceWithPatches
 } from "immer";
 import { useContext, useEffect as useEffect4, useMemo, useReducer, useRef } from "react";
@@ -389,7 +389,13 @@ var Session = class {
 };
 
 // src/sync.ts
+import {
+  applyPatches,
+  enablePatches,
+  produce
+} from "immer";
 import { useEffect as useEffect3 } from "react";
+enablePatches();
 var Sync = class {
   // ========== public methods ========== //
   constructor(key, session, sendOnInit = false) {
@@ -398,6 +404,12 @@ var Sync = class {
     this._lastSyncTime = 0;
     // timestamp of last sync
     this._actionHandlers = /* @__PURE__ */ new Map();
+    this._debounceTimer = null;
+    this._maxWaitTimer = null;
+    this._firstPatchAt = null;
+    this._baseSnapshot = null;
+    // If not null, compress when patch count >= threshold
+    this.compressThreshold = 5;
     this.key = key;
     this.session = session;
     this.sendOnInit = sendOnInit;
@@ -406,8 +418,46 @@ var Sync = class {
     return this._lastSyncTime;
   }
   // flush the pending local changes to the server
-  sync() {
+  sync(params) {
+    const debounceMs = params?.debounceMs ?? 0;
+    const maxWaitMs = params?.maxWaitMs ?? 0;
+    if (debounceMs <= 0) {
+      this.flush();
+      return;
+    }
+    if (this._patches.length === 0) {
+      return;
+    }
+    if (this._firstPatchAt === null) {
+      this._firstPatchAt = Date.now();
+    }
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+    }
+    this._debounceTimer = setTimeout(() => this.flush(), debounceMs);
+    if (maxWaitMs > 0 && this._maxWaitTimer === null && this._firstPatchAt) {
+      const now = Date.now();
+      const fireAt = this._firstPatchAt + maxWaitMs;
+      const delay = Math.max(0, fireAt - now);
+      this._maxWaitTimer = setTimeout(() => this.flush(), delay);
+    }
+  }
+  flush() {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
+    if (this._maxWaitTimer) {
+      clearTimeout(this._maxWaitTimer);
+      this._maxWaitTimer = null;
+    }
     if (this._patches.length > 0) {
+      if (this.compressThreshold !== null && this._patches.length >= this.compressThreshold && this._baseSnapshot !== null) {
+        this._patches = this.compressImmerPatches(
+          this._baseSnapshot,
+          this._patches
+        );
+      }
       this.session.send(
         patchEvent(this.key),
         convertImmerPatchesToJsonPatch(this._patches)
@@ -415,9 +465,32 @@ var Sync = class {
       this._lastSyncTime = Date.now();
       this._patches = [];
     }
+    this._firstPatchAt = null;
+    this._baseSnapshot = null;
   }
-  appendPatch(patches) {
+  appendPatch(patches, baseState) {
     this._patches.push(...patches);
+    if (this._firstPatchAt === null && patches.length > 0) {
+      this._firstPatchAt = Date.now();
+      if (baseState !== void 0) {
+        this._baseSnapshot = baseState;
+      }
+    }
+  }
+  // Compress Immer patches by re-applying them to the captured base and
+  // re-emitting a minimal patch set for the net effect.
+  compressImmerPatches(baseState, patches) {
+    let compressed = patches;
+    produce(
+      baseState,
+      (draft) => {
+        applyPatches(draft, patches);
+      },
+      (p) => {
+        compressed = p;
+      }
+    );
+    return compressed;
   }
   sendAction(action) {
     this.session.send(actionEvent(this.key), action);
@@ -490,7 +563,10 @@ var Sync = class {
         console.error(`[Sync] Attempt to re-register action handler: ${key}`);
         throw new Error(`action handler already registered for ${key}`);
       }
-      this._actionHandlers.set(key, fn);
+      this._actionHandlers.set(key, ((payload) => (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        fn(payload)
+      )));
       registeredKeys.push(key);
     }
     return () => {
@@ -552,7 +628,7 @@ var convertShallowUpdateToImmerPatch = (shallowUpdate) => {
 };
 
 // src/react/synced-reducer.ts
-enablePatches();
+enablePatches2();
 function useSyncedReducer(key, syncedReducer, initialState, overrideSession = null, sendOnInit = false) {
   const session = overrideSession ?? useContext(DefaultSessionContext);
   if (!session) {
@@ -747,9 +823,9 @@ var useRemoteToast = (session, toast, prefix = "") => {
 
 // src/zustand/synced-store.ts
 import { applyReducer as applyReducer2, deepClone as deepClone2 } from "fast-json-patch";
-import { enablePatches as enablePatches2, produceWithPatches as produceWithPatches2 } from "immer";
+import { enablePatches as enablePatches3, produceWithPatches as produceWithPatches2 } from "immer";
 import "zustand/middleware";
-enablePatches2();
+enablePatches3();
 var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
   const newStore = store;
   const syncObj = new Sync(
@@ -767,13 +843,15 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
         }
       };
       const newStateCreator = produceWithPatches2(producer);
-      const [newState, patches] = newStateCreator(get());
-      syncObj.appendPatch(patches);
+      const current = get();
+      const [newState, patches] = newStateCreator(current);
+      syncObj.appendPatch(patches, current);
       return set(newState, replace, ...args);
     } else {
       const newState = updater;
       syncObj.appendPatch(
-        convertShallowUpdateToImmerPatch(newState)
+        convertShallowUpdateToImmerPatch(newState),
+        get()
       );
       return set(newState, replace, ...args);
     }

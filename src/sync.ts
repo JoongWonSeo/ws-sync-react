@@ -1,11 +1,12 @@
 import { Operation as JsonPatch } from "fast-json-patch";
+import type { Draft } from "immer";
 import {
   Patch as ImmerPatch,
   applyPatches,
   enablePatches,
   produce,
 } from "immer";
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { Session } from "./session";
 import type { Actions } from "./zustand/utils";
 enablePatches();
@@ -29,7 +30,8 @@ export class Sync {
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
   private _firstPatchAt: number | null = null;
-  private _baseSnapshot: unknown | null = null;
+  private _baseSnapshot: object | null = null;
+  private _isSyncedSubscribers: Set<() => void> = new Set();
 
   // If not null, compress when patch count >= threshold
   public compressThreshold: number | null = 5;
@@ -112,35 +114,44 @@ export class Sync {
       );
       this._lastSyncTime = Date.now();
       this._patches = [];
+      this._emitIsSyncedChanged();
     }
     this._firstPatchAt = null;
     this._baseSnapshot = null;
   }
 
   public appendPatch(patches: ImmerPatch[], baseState?: unknown): void {
+    const wasSynced = this._patches.length === 0;
     this._patches.push(...patches);
     if (this._firstPatchAt === null && patches.length > 0) {
       this._firstPatchAt = Date.now();
-      if (baseState !== undefined) {
+      if (
+        baseState !== undefined &&
+        typeof baseState === "object" &&
+        baseState !== null
+      ) {
         // capture base snapshot once for compression
-        this._baseSnapshot = baseState;
+        this._baseSnapshot = baseState as object;
       }
+    }
+    const isSynced = this._patches.length === 0;
+    if (wasSynced !== isSynced) {
+      this._emitIsSyncedChanged();
     }
   }
 
   // Compress Immer patches by re-applying them to the captured base and
   // re-emitting a minimal patch set for the net effect.
-  private compressImmerPatches(
-    baseState: unknown,
+  private compressImmerPatches<S extends object>(
+    baseState: S,
     patches: ImmerPatch[]
   ): ImmerPatch[] {
     let compressed: ImmerPatch[] = patches;
-    // applyPatches mutates draft to the final shape; the third arg of produce
-    // collects the resulting minimal patch set relative to baseState
+    // applyPatches mutates the draft to the final shape; Immer then emits a minimal patch set
     produce(
-      baseState as any,
-      (draft: any) => {
-        applyPatches(draft, patches as any);
+      baseState,
+      (draft: Draft<S>) => {
+        applyPatches(draft as unknown as S, patches);
       },
       (p: ImmerPatch[]) => {
         compressed = p;
@@ -262,6 +273,33 @@ export class Sync {
     Handlers extends Record<string, (...args: any[]) => void>
   >(handlers: Handlers): void {
     useEffect(() => this.registerExposedActions(handlers), [this, handlers]);
+  }
+
+  // ======== syncing state subscription + hook ======== //
+  private _subscribeIsSynced = (onStoreChange: () => void): (() => void) => {
+    this._isSyncedSubscribers.add(onStoreChange);
+    return () => {
+      this._isSyncedSubscribers.delete(onStoreChange);
+    };
+  };
+
+  private _emitIsSyncedChanged(): void {
+    for (const cb of this._isSyncedSubscribers) {
+      try {
+        cb();
+      } catch (err) {
+        console.error("[Sync] error in isSynced subscriber", err);
+      }
+    }
+  }
+
+  // React convenience: returns true when no patches are pending to be flushed
+  public useIsSynced(): boolean {
+    return useSyncExternalStore(
+      this._subscribeIsSynced,
+      () => this._patches.length === 0,
+      () => true
+    );
   }
 
   // Create a set of delegator functions that forward to sendAction

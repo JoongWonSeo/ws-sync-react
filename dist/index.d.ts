@@ -80,6 +80,7 @@ type Actions<NameToKey extends {
 
 interface SyncParams {
     debounceMs?: number;
+    maxWaitMs?: number;
 }
 declare class Sync$2 {
     readonly key: string;
@@ -88,10 +89,17 @@ declare class Sync$2 {
     private _patches;
     private _lastSyncTime;
     private _actionHandlers;
+    private _debounceTimer;
+    private _maxWaitTimer;
+    private _firstPatchAt;
+    private _baseSnapshot;
+    compressThreshold: number | null;
     get lastSyncTime(): number;
     constructor(key: string, session: Session, sendOnInit?: boolean);
-    sync(): void;
-    appendPatch(patches: Patch[]): void;
+    sync(params?: SyncParams): void;
+    flush(): void;
+    appendPatch(patches: Patch[], baseState?: unknown): void;
+    private compressImmerPatches;
     sendAction(action: Action): void;
     startTask(task: TaskStart): void;
     cancelTask(task: TaskCancel): void;
@@ -180,8 +188,8 @@ type Sync = {
     sendBinary: (action: Action, data: ArrayBuffer) => void;
     fetchRemoteState: () => void;
     sendState: <S>(state: S) => void;
-    registerExposedActions: (handlers: Record<string, (payload: Record<string, unknown>) => void>) => () => void;
-    useExposedActions: (handlers: Record<string, (payload: Record<string, unknown>) => void>) => void;
+    registerExposedActions: <Handlers extends Record<string, (...args: any[]) => void>>(handlers: Handlers) => () => void;
+    useExposedActions: <Handlers extends Record<string, (...args: any[]) => void>>(handlers: Handlers) => void;
 };
 type Synced = <State, Mps extends [StoreMutatorIdentifier, unknown][] = [], // store mutators from parent middlewares
 Mcs extends [StoreMutatorIdentifier, unknown][] = []>(stateCreator: StateCreator<State, [...Mps, ["sync", Sync]], Mcs>, // forward the mutators from our parent middlewares along with our mutation to the child middleware
