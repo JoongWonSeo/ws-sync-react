@@ -195,11 +195,11 @@ const syncedImpl: SyncedImpl =
       () => get(),
       (s: State) => {
         // replace entire state
-        set(s, true);
+        set(s);
       },
       (patches: JsonPatch[]) => {
         const next = patches.reduce(applyReducer, deepClone(get())) as State;
-        set(next, true);
+        set(next);
       },
       (action: Action) => {
         const currentState = get() as unknown as Record<string, any>;

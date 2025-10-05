@@ -95,4 +95,122 @@ describe("synced-store middleware", () => {
       data: buf,
     });
   });
+
+  test("keeps local actions after remote _SET", () => {
+    const session = new MockSession();
+    type S = { value: number; setValue: (v: number) => void };
+    const useStore = create<S>()(
+      synced(
+        (set) => ({
+          value: 0,
+          setValue: (v: number) => set({ value: v }),
+        }),
+        { key: "SETLOSS", session: session as any }
+      )
+    );
+
+    expect(typeof useStore.getState().setValue).toBe("function");
+
+    const handleSet = session.events["_SET:SETLOSS"];
+    expect(handleSet).toBeDefined();
+    handleSet?.({ value: 5 });
+
+    expect(useStore.getState().value).toBe(5);
+    expect(typeof useStore.getState().setValue).toBe("function");
+  });
+
+  test("keeps local actions after remote _PATCH", () => {
+    const session = new MockSession();
+    type S = { value: number; setValue: (v: number) => void };
+    const useStore = create<S>()(
+      synced(
+        (set) => ({
+          value: 0,
+          setValue: (v: number) => set({ value: v }),
+        }),
+        { key: "PATCHLOSS", session: session as any }
+      )
+    );
+
+    expect(typeof useStore.getState().setValue).toBe("function");
+
+    const handlePatch = session.events["_PATCH:PATCHLOSS"];
+    expect(handlePatch).toBeDefined();
+    handlePatch?.([
+      { op: "replace", path: "/value", value: 7 },
+    ]);
+
+    expect(useStore.getState().value).toBe(7);
+    expect(typeof useStore.getState().setValue).toBe("function");
+  });
+
+  test("sync patches include local-only state updates from shallow set", () => {
+    const session = new MockSession();
+    type S = {
+      remote: number;
+      localOnly: string;
+      setLocalOnly: (v: string) => void;
+    };
+    const useStore = create<S>()(
+      synced(
+        (set, _get, store) => ({
+          remote: 0,
+          localOnly: "init",
+          setLocalOnly: (v: string) => {
+            set({ localOnly: v });
+            store.sync();
+          },
+        }),
+        { key: "LOCAL_SHALLOW", session: session as any }
+      )
+    );
+
+    act(() => {
+      useStore.getState().setLocalOnly("secret");
+    });
+
+    expect(session.sent).toHaveLength(1);
+    expect(session.sent[0].event).toBe("_PATCH:LOCAL_SHALLOW");
+    expect(session.sent[0].data[0]).toEqual({
+      op: "replace",
+      path: "/localOnly",
+      value: "secret",
+    });
+  });
+
+  test("sync patches include local-only state updates from immer mutation", () => {
+    const session = new MockSession();
+    type S = {
+      remote: number;
+      localOnly: { flag: boolean };
+      toggleLocal: () => void;
+    };
+    const useStore = create<S>()(
+      synced(
+        (set, _get, store) => ({
+          remote: 0,
+          localOnly: { flag: false },
+          toggleLocal: () => {
+            set((state) => {
+              state.localOnly.flag = !state.localOnly.flag;
+            });
+            store.sync();
+          },
+        }),
+        { key: "LOCAL_IMMER", session: session as any }
+      )
+    );
+
+    act(() => {
+      useStore.getState().toggleLocal();
+    });
+
+    expect(session.sent).toHaveLength(1);
+    expect(session.sent[0].event).toBe("_PATCH:LOCAL_IMMER");
+    expect(session.sent[0].data[0]).toEqual({
+      op: "replace",
+      path: "/localOnly/flag",
+      value: true,
+    });
+  });
 });
