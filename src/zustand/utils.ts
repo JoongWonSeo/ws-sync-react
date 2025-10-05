@@ -28,6 +28,6 @@ export type Actions<
   KeyToParams
 > = {
   [N in keyof NameToKey]: KeyToParams[NameToKey[N]] extends null
-    ? () => void
+    ? () => void //TODO: this is a lie, it's actually an optional empty arg that defaults to {} and must be {}
     : (args: KeyToParams[NameToKey[N]]) => void;
 };

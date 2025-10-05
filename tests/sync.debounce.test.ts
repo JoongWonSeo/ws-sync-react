@@ -1,4 +1,12 @@
-import { Sync, patchEvent } from "../src/sync";
+import {
+  Sync,
+  actionEvent,
+  getEvent,
+  patchEvent,
+  setEvent,
+  taskCancelEvent,
+  taskStartEvent,
+} from "../src/sync";
 import { MockSession } from "./utils/mocks";
 
 describe("Sync debounce + maxWait", () => {
@@ -84,6 +92,135 @@ describe("Sync debounce + maxWait", () => {
 
     // No extra sends when timers tick after flush
     jest.advanceTimersByTime(1000);
+    expect(session.sent).toHaveLength(1);
+  });
+
+  test("sendAction flushes pending patches before emitting actions", () => {
+    const session = new MockSession();
+    const sync = new Sync("ORDER", session as any);
+
+    sync.appendPatch([{ op: "replace", path: ["count"], value: 5 } as any]);
+    sync.sync({ debounceMs: 100 });
+    expect(session.sent).toHaveLength(0);
+
+    sync.sendAction({ type: "RESET" });
+
+    expect(session.sent).toEqual([
+      {
+        event: patchEvent("ORDER"),
+        data: [{ op: "replace", path: "/count", value: 5 }],
+      },
+      { event: actionEvent("ORDER"), data: { type: "RESET" } },
+    ]);
+
+    // timers should be cleared by the flush triggered in sendAction
+    jest.advanceTimersByTime(200);
+    expect(session.sent).toHaveLength(2);
+  });
+
+  test("task operations flush pending patches before sending events", () => {
+    const mkPatch = () => [{ op: "replace", path: ["status"], value: "dirty" } as any];
+
+    const startSession = new MockSession();
+    const syncStart = new Sync("TASK", startSession as any);
+    syncStart.appendPatch(mkPatch());
+    syncStart.sync({ debounceMs: 100 });
+    expect(startSession.sent).toHaveLength(0);
+
+    syncStart.startTask({ type: "UPLOAD", id: "t1" } as any);
+
+    expect(startSession.sent).toEqual([
+      {
+        event: patchEvent("TASK"),
+        data: [{ op: "replace", path: "/status", value: "dirty" }],
+      },
+      {
+        event: taskStartEvent("TASK"),
+        data: { type: "UPLOAD", id: "t1" },
+      },
+    ]);
+
+    const cancelSession = new MockSession();
+    const syncCancel = new Sync("TASK", cancelSession as any);
+    syncCancel.appendPatch(mkPatch());
+    syncCancel.sync({ debounceMs: 100 });
+    expect(cancelSession.sent).toHaveLength(0);
+
+    syncCancel.cancelTask({ type: "UPLOAD" });
+
+    expect(cancelSession.sent).toEqual([
+      {
+        event: patchEvent("TASK"),
+        data: [{ op: "replace", path: "/status", value: "dirty" }],
+      },
+      {
+        event: taskCancelEvent("TASK"),
+        data: { type: "UPLOAD" },
+      },
+    ]);
+  });
+
+  test("sendBinary flushes patches before sending binary payloads", () => {
+    const session = new MockSession();
+    const sync = new Sync("BIN", session as any);
+    const payload = new Uint8Array([1, 2]).buffer;
+
+    sync.appendPatch([{ op: "replace", path: ["mode"], value: "pending" } as any]);
+    sync.sync({ debounceMs: 100 });
+    expect(session.sent).toHaveLength(0);
+    expect(session.sentBinary).toHaveLength(0);
+
+    sync.sendBinary({ type: "UPLOAD" }, payload);
+
+    expect(session.sent).toEqual([
+      {
+        event: patchEvent("BIN"),
+        data: [{ op: "replace", path: "/mode", value: "pending" }],
+      },
+    ]);
+    expect(session.sentBinary).toEqual([
+      {
+        event: actionEvent("BIN"),
+        meta: { type: "UPLOAD" },
+        data: payload,
+      },
+    ]);
+
+    jest.advanceTimersByTime(200);
+    expect(session.sent).toHaveLength(1);
+    expect(session.sentBinary).toHaveLength(1);
+  });
+
+  test("fetchRemoteState discards pending local patches", () => {
+    const session = new MockSession();
+    const sync = new Sync("FETCH", session as any);
+
+    sync.appendPatch([{ op: "replace", path: ["count"], value: 2 } as any]);
+    sync.sync({ debounceMs: 100 });
+    expect(session.sent).toHaveLength(0);
+
+    sync.fetchRemoteState();
+
+    expect(session.sent).toEqual([{ event: getEvent("FETCH"), data: {} }]);
+
+    jest.advanceTimersByTime(200);
+    expect(session.sent).toHaveLength(1);
+  });
+
+  test("sendState discards pending local patches", () => {
+    const session = new MockSession();
+    const sync = new Sync("SET", session as any);
+    const payload = { value: "server" };
+
+    sync.appendPatch([{ op: "replace", path: ["value"], value: "local" } as any]);
+    sync.sync({ debounceMs: 100 });
+    expect(session.sent).toHaveLength(0);
+
+    sync.sendState(payload);
+
+    expect(session.sent).toEqual([{ event: setEvent("SET"), data: payload }]);
+
+    jest.advanceTimersByTime(200);
     expect(session.sent).toHaveLength(1);
   });
 

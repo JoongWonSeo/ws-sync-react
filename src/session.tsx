@@ -122,7 +122,7 @@ export const SessionProvider = ({
 };
 
 export class Session {
-  url: string;
+  url: string; // TODO: make readonly? or use a setter?
   label: string;
   ws: WebSocket | null = null;
   binaryType: BinaryType;

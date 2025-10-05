@@ -88,14 +88,7 @@ export class Sync {
   }
 
   public flush(): void {
-    if (this._debounceTimer) {
-      clearTimeout(this._debounceTimer);
-      this._debounceTimer = null;
-    }
-    if (this._maxWaitTimer) {
-      clearTimeout(this._maxWaitTimer);
-      this._maxWaitTimer = null;
-    }
+    this._clearTimers();
     if (this._patches.length > 0) {
       // Optionally compress patches before sending
       if (
@@ -113,6 +106,28 @@ export class Sync {
         convertImmerPatchesToJsonPatch(this._patches)
       );
       this._lastSyncTime = Date.now();
+      this._patches = [];
+      this._emitIsSyncedChanged();
+    }
+    this._firstPatchAt = null;
+    this._baseSnapshot = null;
+  }
+
+  private _clearTimers(): void {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
+    if (this._maxWaitTimer) {
+      clearTimeout(this._maxWaitTimer);
+      this._maxWaitTimer = null;
+    }
+  }
+
+  private _discardPendingPatches(): void {
+    const hadPatches = this._patches.length > 0;
+    this._clearTimers();
+    if (hadPatches) {
       this._patches = [];
       this._emitIsSyncedChanged();
     }
@@ -161,28 +176,34 @@ export class Sync {
   }
 
   public sendAction(action: Action): void {
+    this.flush();
     this.session.send(actionEvent(this.key), action);
   }
 
   public startTask(task: TaskStart): void {
+    this.flush();
     this.session.send(taskStartEvent(this.key), task);
   }
 
   public cancelTask(task: TaskCancel): void {
+    this.flush();
     this.session.send(taskCancelEvent(this.key), task);
   }
 
   public sendBinary(action: Action, data: ArrayBuffer): void {
+    this.flush();
     this.session.sendBinary(actionEvent(this.key), action, data);
   }
 
   // fetch the remote state by sending _GET
   public fetchRemoteState(): void {
+    this._discardPendingPatches();
     this.session.send(getEvent(this.key), {});
   }
 
   // send the full state via _SET
   public sendState<S>(state: S): void {
+    this._discardPendingPatches();
     this.session.send(setEvent(this.key), state);
   }
 
