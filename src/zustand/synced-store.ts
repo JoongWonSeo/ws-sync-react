@@ -234,23 +234,21 @@ const syncedImpl: SyncedImpl =
 
     // Register session handlers to support remote -> local updates
     const cleanup = syncObj.registerHandlers<State>(
-      () =>
-        extractSyncedSubset(
-          get() as unknown as Record<string, unknown>
-        ) as State,
+      () => extractSyncedSubset(get() as Record<string, unknown>) as State,
       (s: State) => {
         // replace entire state
         const nextState = extractSyncedSubset(
-          (s as unknown as Record<string, unknown>) ?? {}
+          s as Record<string, unknown>
         ) as State;
         set(nextState);
       },
       (patches: JsonPatch[]) => {
-        const next = patches.reduce(applyReducer, deepClone(get())) as State;
+        const current = extractSyncedSubset(get() as Record<string, unknown>);
+        const next = patches.reduce(applyReducer, deepClone(current)) as State;
         set(next);
       },
       (action: Action) => {
-        const currentState = get() as unknown as Record<string, any>;
+        const currentState = get() as Record<string, any>;
         const handler = currentState[action.type];
         if (typeof handler === "function") {
           const payload = { ...(action as Record<string, any>) };

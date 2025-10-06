@@ -218,4 +218,72 @@ describe("syncAttributes option", () => {
       data: { remote: 3 },
     });
   });
+
+  test("remote patches keep Set state when excluded via syncAttributes", () => {
+    const session = new MockSession();
+    type S = {
+      remote: number;
+      localSet: Set<string>;
+    };
+    const useStore = create<S>()(
+      synced(
+        () => ({
+          remote: 0,
+          localSet: new Set(["alpha"]),
+        }),
+        {
+          key: "SYNC_SET_LOCAL",
+          session: session as any,
+          syncAttributes: ["remote"],
+        }
+      )
+    );
+
+    const handler = session.events["_PATCH:SYNC_SET_LOCAL"];
+    expect(handler).toBeDefined();
+
+    act(() => {
+      handler?.([{ op: "replace", path: "/remote", value: 1 }]);
+    });
+
+    const localSet = useStore.getState().localSet;
+    expect(localSet).toBeInstanceOf(Set);
+    if (localSet instanceof Set) {
+      expect(Array.from(localSet)).toEqual(["alpha"]);
+    }
+  });
+
+  test("remote patches keep Map state when excluded via syncAttributes", () => {
+    const session = new MockSession();
+    type S = {
+      remote: number;
+      localMap: Map<string, number>;
+    };
+    const useStore = create<S>()(
+      synced(
+        () => ({
+          remote: 0,
+          localMap: new Map([["k", 1]]),
+        }),
+        {
+          key: "SYNC_MAP_LOCAL",
+          session: session as any,
+          syncAttributes: ["remote"],
+        }
+      )
+    );
+
+    const handler = session.events["_PATCH:SYNC_MAP_LOCAL"];
+    expect(handler).toBeDefined();
+
+    act(() => {
+      handler?.([{ op: "replace", path: "/remote", value: 2 }]);
+    });
+
+    const localMap = useStore.getState().localMap;
+    expect(localMap).toBeInstanceOf(Map);
+    if (localMap instanceof Map) {
+      expect(Array.from(localMap.entries())).toEqual([["k", 1]]);
+    }
+  });
 });
