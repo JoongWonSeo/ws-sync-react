@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Operation as JsonPatch } from "fast-json-patch";
 import { applyReducer, deepClone } from "fast-json-patch";
-import type { Draft } from "immer";
+import type { Draft, Patch as ImmerPatch } from "immer";
 import { enablePatches, produceWithPatches } from "immer";
 import "zustand/middleware";
 import {
@@ -79,6 +79,7 @@ export interface SyncOptions {
   key: string;
   session: Session;
   sendOnInit?: boolean;
+  syncAttributes?: string[] | Record<string, unknown>;
 }
 
 // attached to the store with helpers
@@ -150,6 +151,44 @@ const syncedImpl: SyncedImpl =
   (stateCreator, syncOptions) => (set, get, store) => {
     type State = ReturnType<typeof stateCreator>;
 
+    const syncAttributes: Set<string> | null = Array.isArray(
+      syncOptions.syncAttributes
+    )
+      ? new Set(syncOptions.syncAttributes)
+      : syncOptions.syncAttributes !== undefined
+      ? new Set(Object.keys(syncOptions.syncAttributes))
+      : null;
+
+    const extractSyncedSubset = <T extends Record<string, unknown>>(
+      source: T
+    ): Partial<T> => {
+      if (!syncAttributes) {
+        // implicitly sync all attributes
+        return source;
+      }
+      const result: Partial<T> = {};
+      for (const key of syncAttributes) {
+        if (Object.prototype.hasOwnProperty.call(source, key)) {
+          result[key as keyof T] = source[key as keyof T];
+        }
+      }
+      return result;
+    };
+
+    const filterImmerPatches = (patches: ImmerPatch[]): ImmerPatch[] => {
+      if (!syncAttributes) {
+        // implicitly sync all attributes
+        return patches;
+      }
+      return patches.filter((patch) => {
+        const root = patch.path[0];
+        if (typeof root === "string") {
+          return syncAttributes.has(root);
+        }
+        return false;
+      });
+    };
+
     // attach new sync object to the store
     const newStore = store as Mutate<StoreApi<State>, [["sync", Sync]]>;
     const syncObj = new SyncObj(
@@ -173,16 +212,19 @@ const syncedImpl: SyncedImpl =
         // apply the producer to the current state, save the patches
         const current = get();
         const [newState, patches] = newStateCreator(current);
+        const filteredPatches = filterImmerPatches(patches);
+        syncObj.appendPatch(filteredPatches, current as unknown as object);
         // save the patches with base snapshot for optional compression
-        syncObj.appendPatch(patches, current as unknown as object);
-
         return set(newState as State, replace as any, ...args);
       } else {
         // new state is already given, convert to patch
         const newState = updater;
+        const shallowUpdate = extractSyncedSubset(
+          (newState as Record<string, any>) ?? {}
+        ) as Record<string, unknown>;
         // save as patch with base snapshot, so that it can be synced later
         syncObj.appendPatch(
-          convertShallowUpdateToImmerPatch(newState as Record<string, any>),
+          convertShallowUpdateToImmerPatch(shallowUpdate),
           get() as unknown as object
         );
 
@@ -192,10 +234,16 @@ const syncedImpl: SyncedImpl =
 
     // Register session handlers to support remote -> local updates
     const cleanup = syncObj.registerHandlers<State>(
-      () => get(),
+      () =>
+        extractSyncedSubset(
+          get() as unknown as Record<string, unknown>
+        ) as State,
       (s: State) => {
         // replace entire state
-        set(s);
+        const nextState = extractSyncedSubset(
+          (s as unknown as Record<string, unknown>) ?? {}
+        ) as State;
+        set(nextState);
       },
       (patches: JsonPatch[]) => {
         const next = patches.reduce(applyReducer, deepClone(get())) as State;
@@ -233,7 +281,10 @@ const syncedImpl: SyncedImpl =
     callableSync.cancelTask = syncObj.cancelTask.bind(syncObj);
     callableSync.sendBinary = syncObj.sendBinary.bind(syncObj);
     callableSync.fetchRemoteState = syncObj.fetchRemoteState.bind(syncObj);
-    callableSync.sendState = syncObj.sendState.bind(syncObj);
+    callableSync.sendState = (<S>(state: S) => {
+      const subset = extractSyncedSubset(state as Record<string, unknown>);
+      syncObj.sendState(subset);
+    }) as Sync["sendState"];
     callableSync.registerExposedActions =
       syncObj.registerExposedActions.bind(syncObj);
     callableSync.useExposedActions = syncObj.useExposedActions.bind(syncObj);
