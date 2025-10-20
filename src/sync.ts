@@ -8,7 +8,7 @@ import {
 } from "immer";
 import { useEffect, useSyncExternalStore } from "react";
 import { Session } from "./session";
-import type { Actions } from "./zustand/utils";
+import type { Actions, Tasks } from "./zustand/utils";
 enablePatches();
 
 // parameters for the `sync()` operation
@@ -358,6 +358,48 @@ export class Sync {
       })
     );
     return result as Actions<NameToKey, KeyToParams>;
+  }
+
+  // Create a set of task control objects that forward to startTask/cancelTask
+  public createTaskDelegators<
+    KeyToParams extends object,
+    NameToKey extends Record<string, keyof KeyToParams>
+  >(nameToKey: NameToKey): Tasks<NameToKey, KeyToParams>;
+  public createTaskDelegators<KeyToParams extends object>(): <
+    NameToKey extends Record<string, keyof KeyToParams>
+  >(
+    nameToKey: NameToKey
+  ) => Tasks<NameToKey, KeyToParams>;
+  public createTaskDelegators<
+    KeyToParams extends object,
+    NameToKey extends Record<string, keyof KeyToParams>
+  >(nameToKey?: NameToKey) {
+    if (arguments.length === 0) {
+      return (ntk: NameToKey) =>
+        this.createTaskDelegators<KeyToParams, NameToKey>(ntk);
+    }
+    const entries = Object.entries(nameToKey as NameToKey) as [
+      string,
+      keyof KeyToParams
+    ][];
+    const result = Object.fromEntries(
+      entries.map(([localName, remoteKey]) => {
+        const taskControl = {
+          start: (args?: Record<string, unknown> | null) => {
+            if (args === null || args === undefined) {
+              this.startTask({ type: String(remoteKey) });
+            } else {
+              this.startTask({ type: String(remoteKey), ...(args as object) });
+            }
+          },
+          cancel: () => {
+            this.cancelTask({ type: String(remoteKey) });
+          },
+        };
+        return [localName, taskControl];
+      })
+    );
+    return result as Tasks<NameToKey, KeyToParams>;
   }
 }
 

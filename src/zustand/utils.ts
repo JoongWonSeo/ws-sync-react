@@ -31,3 +31,45 @@ export type Actions<
     ? () => void //TODO: this is a lie, it's actually an optional empty arg that defaults to {} and must be {}
     : (args: KeyToParams[NameToKey[N]]) => void;
 };
+
+/**
+ * Utility type that creates task control objects with start/cancel methods.
+ *
+ * @template NameToKey - Maps task names to parameter type keys
+ * @template KeyToParams - Maps parameter type keys to their actual parameter types
+ *
+ * @example
+ * ```typescript
+ * type TasksKeys = {
+ *   export: 'EXPORT_DATA';
+ *   import: 'IMPORT_DATA';
+ * };
+ * type TasksParams = {
+ *   EXPORT_DATA: { format: string };
+ *   IMPORT_DATA: { file: string };
+ * };
+ *
+ * type MyTasks = Tasks<TasksKeys, TasksParams>;
+ * // Result: {
+ * //   export: {
+ * //     start: (args: { format: string }) => void;
+ * //     cancel: () => void;
+ * //   };
+ * //   import: {
+ * //     start: (args: { file: string }) => void;
+ * //     cancel: () => void;
+ * //   };
+ * // }
+ * ```
+ */
+export type Tasks<
+  NameToKey extends { [N in keyof NameToKey]: keyof KeyToParams },
+  KeyToParams
+> = {
+  [N in keyof NameToKey]: {
+    start: KeyToParams[NameToKey[N]] extends null
+      ? () => void
+      : (args: KeyToParams[NameToKey[N]]) => void;
+    cancel: () => void;
+  };
+};

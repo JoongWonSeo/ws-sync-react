@@ -250,6 +250,109 @@ describe("Sync dynamic action handlers", () => {
   });
 });
 
+describe("Sync task delegators", () => {
+  test("createTaskDelegators typing works with enum-like keys", () => {
+    // Simulate generated types
+    const Keys = {
+      export: "EXPORT_DATA",
+      import: "IMPORT_DATA",
+      process: "PROCESS_DATA",
+    } as const;
+
+    interface Params {
+      EXPORT_DATA: { format: string; filename: string };
+      IMPORT_DATA: { file: string };
+      PROCESS_DATA: null;
+    }
+
+    const TaskNames = {
+      exportData: Keys.export,
+      importData: Keys.import,
+      processData: Keys.process,
+    } as const;
+
+    const sync = new Sync("TASKS", new MockSession() as any);
+    const tasks = sync.createTaskDelegators<Params>()(TaskNames);
+
+    // Type-only assertions
+    tasks.exportData.start({ format: "json", filename: "data.json" });
+    tasks.exportData.cancel();
+    tasks.importData.start({ file: "input.csv" });
+    tasks.importData.cancel();
+    tasks.processData.start();
+    tasks.processData.cancel();
+  });
+
+  test("createTaskDelegators sends TASK_START and TASK_CANCEL events", () => {
+    const session = new MockSession();
+    const sync = new Sync("TSK", session as any);
+
+    const Keys = {
+      BACKUP: "BACKUP",
+      RESTORE: "RESTORE",
+    } as const;
+
+    interface Params {
+      BACKUP: { destination: string };
+      RESTORE: null;
+    }
+
+    const map = { backup: Keys.BACKUP, restore: Keys.RESTORE } as const;
+
+    const tasks = sync.createTaskDelegators<Params>()(map);
+
+    tasks.backup.start({ destination: "/backup" });
+    tasks.restore.start();
+    tasks.backup.cancel();
+    tasks.restore.cancel();
+
+    expect(session.sent).toEqual([
+      { event: "_TASK_START:TSK", data: { type: "BACKUP", destination: "/backup" } },
+      { event: "_TASK_START:TSK", data: { type: "RESTORE" } },
+      { event: "_TASK_CANCEL:TSK", data: { type: "BACKUP" } },
+      { event: "_TASK_CANCEL:TSK", data: { type: "RESTORE" } },
+    ]);
+  });
+
+  test("store.sync.createTaskDelegators works (curried)", () => {
+    const session = new MockSession();
+    const sync = new Sync("S3", session as any);
+    const Keys = { CALC: "CALC", RENDER: "RENDER" } as const;
+    interface Params {
+      CALC: { iterations: number };
+      RENDER: null;
+    }
+
+    // Simulate attachment like zustand middleware
+    const callable = sync.sync.bind(sync) as unknown as {
+      createTaskDelegators: Sync["createTaskDelegators"];
+      startTask: Sync["startTask"];
+      cancelTask: Sync["cancelTask"];
+    };
+    (callable as unknown as any).createTaskDelegators =
+      sync.createTaskDelegators.bind(sync);
+    (callable as unknown as any).startTask = sync.startTask.bind(sync);
+    (callable as unknown as any).cancelTask = sync.cancelTask.bind(sync);
+
+    const tasks = callable.createTaskDelegators<Params>()({
+      calculate: Keys.CALC,
+      render: Keys.RENDER,
+    } as const);
+
+    tasks.calculate.start({ iterations: 100 });
+    tasks.calculate.cancel();
+    tasks.render.start();
+    tasks.render.cancel();
+
+    expect(session.sent).toEqual([
+      { event: "_TASK_START:S3", data: { type: "CALC", iterations: 100 } },
+      { event: "_TASK_CANCEL:S3", data: { type: "CALC" } },
+      { event: "_TASK_START:S3", data: { type: "RENDER" } },
+      { event: "_TASK_CANCEL:S3", data: { type: "RENDER" } },
+    ]);
+  });
+});
+
 describe("Sync.useExposedActions wrapper", () => {
   test("registers on mount and cleans up on unmount", () => {
     const session = new MockSession();

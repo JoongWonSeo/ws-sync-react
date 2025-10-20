@@ -19,7 +19,7 @@ import {
   TaskCancel,
   TaskStart,
 } from "../sync";
-import { Actions } from "../zustand/utils";
+import { Actions, Tasks } from "../zustand/utils";
 
 // ========== type helpers ========== //
 // "Overwrite" the keys of T with the keys of U.
@@ -97,6 +97,20 @@ type CreateDelegatorsFn = {
   ): Actions<NameToKey, KeyToParams>;
 };
 
+type CreateTaskDelegatorsFn = {
+  <KeyToParams extends object>(): <
+    NameToKey extends Record<string, keyof KeyToParams>
+  >(
+    nameToKey: NameToKey
+  ) => Tasks<NameToKey, KeyToParams>;
+  <
+    KeyToParams extends object,
+    NameToKey extends Record<string, keyof KeyToParams>
+  >(
+    nameToKey: NameToKey
+  ): Tasks<NameToKey, KeyToParams>;
+};
+
 type Sync = {
   obj: SyncObj; // attach the original syncObj
   cleanup: () => void; // cleanup function, for deleting dynamic stores
@@ -104,6 +118,7 @@ type Sync = {
   // syntactic sugar for easier access
   (params?: SyncParams): void; // callable sync function
   createDelegators: CreateDelegatorsFn;
+  createTaskDelegators: CreateTaskDelegatorsFn;
   sendAction: (action: Action) => void;
   startTask: (task: TaskStart) => void;
   cancelTask: (task: TaskCancel) => void;
@@ -274,6 +289,7 @@ const syncedImpl: SyncedImpl =
 
     // attach only the public helpers we want to expose
     callableSync.createDelegators = syncObj.createDelegators.bind(syncObj);
+    callableSync.createTaskDelegators = syncObj.createTaskDelegators.bind(syncObj);
     callableSync.sendAction = syncObj.sendAction.bind(syncObj);
     callableSync.startTask = syncObj.startTask.bind(syncObj);
     callableSync.cancelTask = syncObj.cancelTask.bind(syncObj);
