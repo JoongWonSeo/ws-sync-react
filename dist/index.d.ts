@@ -77,6 +77,44 @@ type Actions<NameToKey extends {
 }, KeyToParams> = {
     [N in keyof NameToKey]: KeyToParams[NameToKey[N]] extends null ? () => void : (args: KeyToParams[NameToKey[N]]) => void;
 };
+/**
+ * Utility type that creates task control objects with start/cancel methods.
+ *
+ * @template NameToKey - Maps task names to parameter type keys
+ * @template KeyToParams - Maps parameter type keys to their actual parameter types
+ *
+ * @example
+ * ```typescript
+ * type TasksKeys = {
+ *   export: 'EXPORT_DATA';
+ *   import: 'IMPORT_DATA';
+ * };
+ * type TasksParams = {
+ *   EXPORT_DATA: { format: string };
+ *   IMPORT_DATA: { file: string };
+ * };
+ *
+ * type MyTasks = Tasks<TasksKeys, TasksParams>;
+ * // Result: {
+ * //   export: {
+ * //     start: (args: { format: string }) => void;
+ * //     cancel: () => void;
+ * //   };
+ * //   import: {
+ * //     start: (args: { file: string }) => void;
+ * //     cancel: () => void;
+ * //   };
+ * // }
+ * ```
+ */
+type Tasks<NameToKey extends {
+    [N in keyof NameToKey]: keyof KeyToParams;
+}, KeyToParams> = {
+    [N in keyof NameToKey]: {
+        start: KeyToParams[NameToKey[N]] extends null ? () => void : (args: KeyToParams[NameToKey[N]]) => void;
+        cancel: () => void;
+    };
+};
 
 interface SyncParams {
     debounceMs?: number;
@@ -99,6 +137,8 @@ declare class Sync$2 {
     constructor(key: string, session: Session, sendOnInit?: boolean);
     sync(params?: SyncParams): void;
     flush(): void;
+    private _clearTimers;
+    private _discardPendingPatches;
     appendPatch(patches: Patch[], baseState?: unknown): void;
     private compressImmerPatches;
     sendAction(action: Action): void;
@@ -115,6 +155,8 @@ declare class Sync$2 {
     useIsSynced(): boolean;
     createDelegators<KeyToParams extends object, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
     createDelegators<KeyToParams extends object>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Actions<NameToKey, KeyToParams>;
+    createTaskDelegators<KeyToParams extends object, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Tasks<NameToKey, KeyToParams>;
+    createTaskDelegators<KeyToParams extends object>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Tasks<NameToKey, KeyToParams>;
 }
 type Action = {
     type: string;
@@ -176,16 +218,22 @@ interface SyncOptions {
     key: string;
     session: Session;
     sendOnInit?: boolean;
+    syncAttributes?: string[] | Record<string, unknown>;
 }
 type CreateDelegatorsFn = {
     <KeyToParams extends object>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Actions<NameToKey, KeyToParams>;
     <KeyToParams extends object, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Actions<NameToKey, KeyToParams>;
+};
+type CreateTaskDelegatorsFn = {
+    <KeyToParams extends object>(): <NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey) => Tasks<NameToKey, KeyToParams>;
+    <KeyToParams extends object, NameToKey extends Record<string, keyof KeyToParams>>(nameToKey: NameToKey): Tasks<NameToKey, KeyToParams>;
 };
 type Sync = {
     obj: Sync$2;
     cleanup: () => void;
     (params?: SyncParams): void;
     createDelegators: CreateDelegatorsFn;
+    createTaskDelegators: CreateTaskDelegatorsFn;
     sendAction: (action: Action) => void;
     startTask: (task: TaskStart) => void;
     cancelTask: (task: TaskCancel) => void;
@@ -208,4 +256,4 @@ declare module "zustand/vanilla" {
 }
 declare const synced: Synced;
 
-export { type Action, type Actions, DefaultSessionContext, type Delegate, Session, SessionProvider, type StateWithFetch, type StateWithSync, type Sync$1 as Sync, type SyncOptions, type SyncedReducer, type TaskCancel, type TaskStart, synced, useObserved, useRemoteToast, useSynced, useSyncedReducer };
+export { type Action, type Actions, DefaultSessionContext, type Delegate, Session, SessionProvider, type StateWithFetch, type StateWithSync, type Sync$1 as Sync, type SyncOptions, type SyncedReducer, type TaskCancel, type TaskStart, type Tasks, synced, useObserved, useRemoteToast, useSynced, useSyncedReducer };

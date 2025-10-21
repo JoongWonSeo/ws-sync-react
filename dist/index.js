@@ -486,14 +486,7 @@ var Sync = class {
     }
   }
   flush() {
-    if (this._debounceTimer) {
-      clearTimeout(this._debounceTimer);
-      this._debounceTimer = null;
-    }
-    if (this._maxWaitTimer) {
-      clearTimeout(this._maxWaitTimer);
-      this._maxWaitTimer = null;
-    }
+    this._clearTimers();
     if (this._patches.length > 0) {
       if (this.compressThreshold !== null && this._patches.length >= this.compressThreshold && this._baseSnapshot !== null) {
         this._patches = this.compressImmerPatches(
@@ -506,6 +499,26 @@ var Sync = class {
         convertImmerPatchesToJsonPatch(this._patches)
       );
       this._lastSyncTime = Date.now();
+      this._patches = [];
+      this._emitIsSyncedChanged();
+    }
+    this._firstPatchAt = null;
+    this._baseSnapshot = null;
+  }
+  _clearTimers() {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
+    if (this._maxWaitTimer) {
+      clearTimeout(this._maxWaitTimer);
+      this._maxWaitTimer = null;
+    }
+  }
+  _discardPendingPatches() {
+    const hadPatches = this._patches.length > 0;
+    this._clearTimers();
+    if (hadPatches) {
       this._patches = [];
       this._emitIsSyncedChanged();
     }
@@ -542,23 +555,29 @@ var Sync = class {
     return compressed;
   }
   sendAction(action) {
+    this.flush();
     this.session.send(actionEvent(this.key), action);
   }
   startTask(task) {
+    this.flush();
     this.session.send(taskStartEvent(this.key), task);
   }
   cancelTask(task) {
+    this.flush();
     this.session.send(taskCancelEvent(this.key), task);
   }
   sendBinary(action, data) {
+    this.flush();
     this.session.sendBinary(actionEvent(this.key), action, data);
   }
   // fetch the remote state by sending _GET
   fetchRemoteState() {
+    this._discardPendingPatches();
     this.session.send(getEvent(this.key), {});
   }
   // send the full state via _SET
   sendState(state) {
+    this._discardPendingPatches();
     this.session.send(setEvent(this.key), state);
   }
   // Register session event handlers for a reducer-like consumer and return a cleanup function
@@ -660,6 +679,30 @@ var Sync = class {
           }
         };
         return [localName, fn];
+      })
+    );
+    return result;
+  }
+  createTaskDelegators(nameToKey) {
+    if (arguments.length === 0) {
+      return (ntk) => this.createTaskDelegators(ntk);
+    }
+    const entries = Object.entries(nameToKey);
+    const result = Object.fromEntries(
+      entries.map(([localName, remoteKey]) => {
+        const taskControl = {
+          start: (args) => {
+            if (args === null || args === void 0) {
+              this.startTask({ type: String(remoteKey) });
+            } else {
+              this.startTask({ type: String(remoteKey), ...args });
+            }
+          },
+          cancel: () => {
+            this.cancelTask({ type: String(remoteKey) });
+          }
+        };
+        return [localName, taskControl];
       })
     );
     return result;
@@ -893,6 +936,33 @@ var import_immer3 = require("immer");
 var import_middleware = require("zustand/middleware");
 (0, import_immer3.enablePatches)();
 var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
+  const syncAttributes = Array.isArray(
+    syncOptions.syncAttributes
+  ) ? new Set(syncOptions.syncAttributes) : syncOptions.syncAttributes !== void 0 ? new Set(Object.keys(syncOptions.syncAttributes)) : null;
+  const extractSyncedSubset = (source) => {
+    if (!syncAttributes) {
+      return source;
+    }
+    const result = {};
+    for (const key of syncAttributes) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        result[key] = source[key];
+      }
+    }
+    return result;
+  };
+  const filterImmerPatches = (patches) => {
+    if (!syncAttributes) {
+      return patches;
+    }
+    return patches.filter((patch) => {
+      const root = patch.path[0];
+      if (typeof root === "string") {
+        return syncAttributes.has(root);
+      }
+      return false;
+    });
+  };
   const newStore = store;
   const syncObj = new Sync(
     syncOptions.key,
@@ -911,25 +981,33 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
       const newStateCreator = (0, import_immer3.produceWithPatches)(producer);
       const current = get();
       const [newState, patches] = newStateCreator(current);
-      syncObj.appendPatch(patches, current);
+      const filteredPatches = filterImmerPatches(patches);
+      syncObj.appendPatch(filteredPatches, current);
       return set(newState, replace, ...args);
     } else {
       const newState = updater;
+      const shallowUpdate = extractSyncedSubset(
+        newState ?? {}
+      );
       syncObj.appendPatch(
-        convertShallowUpdateToImmerPatch(newState),
+        convertShallowUpdateToImmerPatch(shallowUpdate),
         get()
       );
       return set(newState, replace, ...args);
     }
   };
   const cleanup = syncObj.registerHandlers(
-    () => get(),
+    () => extractSyncedSubset(get()),
     (s) => {
-      set(s, true);
+      const nextState = extractSyncedSubset(
+        s
+      );
+      set(nextState);
     },
     (patches) => {
-      const next = patches.reduce(import_fast_json_patch2.applyReducer, (0, import_fast_json_patch2.deepClone)(get()));
-      set(next, true);
+      const current = extractSyncedSubset(get());
+      const next = patches.reduce(import_fast_json_patch2.applyReducer, (0, import_fast_json_patch2.deepClone)(current));
+      set(next);
     },
     (action) => {
       const currentState = get();
@@ -952,12 +1030,16 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
   callableSync.obj = syncObj;
   callableSync.cleanup = cleanup;
   callableSync.createDelegators = syncObj.createDelegators.bind(syncObj);
+  callableSync.createTaskDelegators = syncObj.createTaskDelegators.bind(syncObj);
   callableSync.sendAction = syncObj.sendAction.bind(syncObj);
   callableSync.startTask = syncObj.startTask.bind(syncObj);
   callableSync.cancelTask = syncObj.cancelTask.bind(syncObj);
   callableSync.sendBinary = syncObj.sendBinary.bind(syncObj);
   callableSync.fetchRemoteState = syncObj.fetchRemoteState.bind(syncObj);
-  callableSync.sendState = syncObj.sendState.bind(syncObj);
+  callableSync.sendState = ((state) => {
+    const subset = extractSyncedSubset(state);
+    syncObj.sendState(subset);
+  });
   callableSync.registerExposedActions = syncObj.registerExposedActions.bind(syncObj);
   callableSync.useExposedActions = syncObj.useExposedActions.bind(syncObj);
   callableSync.useIsSynced = syncObj.useIsSynced.bind(syncObj);
