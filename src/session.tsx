@@ -122,7 +122,7 @@ export const SessionProvider = ({
 };
 
 export class Session {
-  url: string;
+  url: string; // TODO: make readonly? or use a setter?
   label: string;
   ws: WebSocket | null = null;
   binaryType: BinaryType;
@@ -278,14 +278,14 @@ export class Session {
       // console.info(`[WS Session] onopen - Connected to ${this.label}!`);
       this.toast?.success(`Connected to ${this.label}!`);
       this.isConnected = true;
-      if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
+      this.onConnectionChange?.(this.isConnected);
       this.retryInterval = this.minRetryInterval;
     };
 
     this.ws.onclose = () => {
       // console.warn(`[WS Session] onclose - Disconnected from ${this.label}`);
       this.isConnected = false;
-      if (this.onConnectionChange) this.onConnectionChange(this.isConnected);
+      this.onConnectionChange?.(this.isConnected);
 
       if (this.autoReconnect) {
         this.toast?.warning(
@@ -332,15 +332,21 @@ export class Session {
 
   disconnect() {
     // console.info(`[WS Session] Disconnecting from ${this.label}`);
-    this.autoReconnect = false;
-    this.ws?.close();
-    if (this.onConnectionChange) this.onConnectionChange(false);
+    // Mark disconnected and notify once
+    const wasConnected = this.isConnected;
+    this.isConnected = false;
+    if (wasConnected) {
+      this.onConnectionChange?.(this.isConnected);
+    }
 
+    // Disable auto-reconnect and prevent onclose from firing a second time
+    this.autoReconnect = false;
     if (this.ws !== null) {
       this.ws.onopen = null;
       this.ws.onclose = null;
       this.ws.onmessage = null;
       this.ws.onerror = null;
+      this.ws.close();
       this.ws = null;
     }
 

@@ -1,61 +1,22 @@
-"use strict";
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// src/index.ts
-var index_exports = {};
-__export(index_exports, {
-  DefaultSessionContext: () => DefaultSessionContext,
-  Session: () => Session,
-  SessionProvider: () => SessionProvider,
-  synced: () => synced,
-  useObserved: () => useObserved,
-  useRemoteToast: () => useRemoteToast,
-  useSynced: () => useSynced,
-  useSyncedReducer: () => useSyncedReducer
-});
-module.exports = __toCommonJS(index_exports);
-
 // src/react/synced-reducer.ts
-var import_fast_json_patch = require("fast-json-patch");
-var import_immer2 = require("immer");
-var import_react4 = require("react");
+import { applyReducer, deepClone } from "fast-json-patch";
+import {
+  castImmutable,
+  enablePatches as enablePatches2,
+  produceWithPatches
+} from "immer";
+import { useContext, useEffect as useEffect4, useMemo, useReducer, useRef } from "react";
 
 // src/session.tsx
-var import_js_file_download = __toESM(require("js-file-download"));
-var import_react2 = require("react");
-var import_uuid = require("uuid");
+import fileDownload from "js-file-download";
+import { createContext, useEffect as useEffect2, useState as useState2 } from "react";
+import { v4 as uuid } from "uuid";
 
 // src/utils/useStorage.ts
-var import_react = require("react");
+import { useState, useEffect, useCallback } from "react";
 function useStorage(storageType, key, initialValue) {
   const storage = window[storageType];
-  const readValue = (0, import_react.useCallback)(() => {
+  const readValue = useCallback(() => {
     if (typeof window === "undefined") {
       return initialValue instanceof Function ? initialValue() : initialValue;
     }
@@ -69,8 +30,8 @@ function useStorage(storageType, key, initialValue) {
     }
     return initialValue instanceof Function ? initialValue() : initialValue;
   }, [key, initialValue, storageType, storage]);
-  const [storedValue, setStoredValue] = (0, import_react.useState)(readValue);
-  const setValue = (0, import_react.useCallback)(
+  const [storedValue, setStoredValue] = useState(readValue);
+  const setValue = useCallback(
     (value) => {
       if (typeof window === "undefined") {
         console.warn(
@@ -88,10 +49,10 @@ function useStorage(storageType, key, initialValue) {
     },
     [key, storedValue, storageType, storage]
   );
-  (0, import_react.useEffect)(() => {
+  useEffect(() => {
     setStoredValue(readValue());
   }, []);
-  (0, import_react.useEffect)(() => {
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -121,8 +82,8 @@ function useSessionStorage(key, initialValue) {
 }
 
 // src/session.tsx
-var import_jsx_runtime = require("react/jsx-runtime");
-var DefaultSessionContext = (0, import_react2.createContext)(null);
+import { jsx } from "react/jsx-runtime";
+var DefaultSessionContext = createContext(null);
 var SessionProvider = ({
   url,
   label,
@@ -133,8 +94,8 @@ var SessionProvider = ({
   wsAuth = false,
   binaryType = "blob"
 }) => {
-  const [session, setSession] = (0, import_react2.useState)(null);
-  (0, import_react2.useEffect)(() => {
+  const [session, setSession] = useState2(null);
+  useEffect2(() => {
     console.info(
       `[WS Session] Creating new session for ${label || "Server"} at ${url}`
     );
@@ -147,7 +108,7 @@ var SessionProvider = ({
       newSession.disconnect();
     };
   }, [url]);
-  (0, import_react2.useEffect)(() => {
+  useEffect2(() => {
     if (session) {
       console.info(
         `[WS Session] Updating label and/or toast reference for ${label || "Server"} at ${url}`
@@ -156,7 +117,7 @@ var SessionProvider = ({
       session.toast = toast;
     }
   }, [label, toast, session]);
-  (0, import_react2.useEffect)(() => {
+  useEffect2(() => {
     if (autoconnect && session) {
       console.info(
         `[WS Session] Autoconnecting session for ${label || "Server"} at ${url}`
@@ -179,18 +140,18 @@ var SessionProvider = ({
       "_SESSION_ID",
       null
     );
-    (0, import_react2.useEffect)(() => {
+    useEffect2(() => {
       if (!session) return;
       const handleRequestUserSession = () => {
         let u = userId;
         let s = sessionId;
         if (u === null) {
-          u = (0, import_uuid.v4)();
+          u = uuid();
           setUserId(u);
           console.info("[WS Session] Generated new user ID:", u);
         }
         if (s === null) {
-          s = (0, import_uuid.v4)();
+          s = uuid();
           setSessionId(s);
           console.info("[WS Session] Generated new session ID:", s);
         }
@@ -202,7 +163,7 @@ var SessionProvider = ({
       };
     }, [session, userId, sessionId]);
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(context.Provider, { value: session, children });
+  return /* @__PURE__ */ jsx(context.Provider, { value: session, children });
 };
 var Session = class {
   constructor(url, label = "Server", toast = null, binaryType = "blob", minRetryInterval = 250, maxRetryInterval = 1e4) {
@@ -391,7 +352,7 @@ var Session = class {
         return;
       } else if (event.type === "_DOWNLOAD") {
         const { filename, data } = event.data;
-        fetch(`data:application/octet-stream;base64,${data}`).then((res) => res.blob()).then((blob) => (0, import_js_file_download.default)(blob, filename));
+        fetch(`data:application/octet-stream;base64,${data}`).then((res) => res.blob()).then((blob) => fileDownload(blob, filename));
       } else if (event.type === "_BIN_META") {
         if (this.binData !== null) {
           console.warn("[WS Session] Overwriting existing binData metadata");
@@ -428,9 +389,13 @@ var Session = class {
 };
 
 // src/sync.ts
-var import_immer = require("immer");
-var import_react3 = require("react");
-(0, import_immer.enablePatches)();
+import {
+  applyPatches,
+  enablePatches,
+  produce
+} from "immer";
+import { useEffect as useEffect3, useSyncExternalStore } from "react";
+enablePatches();
 var Sync = class {
   // ========== public methods ========== //
   constructor(key, session, sendOnInit = false) {
@@ -543,10 +508,10 @@ var Sync = class {
   // re-emitting a minimal patch set for the net effect.
   compressImmerPatches(baseState, patches) {
     let compressed = patches;
-    (0, import_immer.produce)(
+    produce(
       baseState,
       (draft) => {
-        (0, import_immer.applyPatches)(draft, patches);
+        applyPatches(draft, patches);
       },
       (p) => {
         compressed = p;
@@ -645,7 +610,7 @@ var Sync = class {
   }
   // React convenience: register/deregister within a useEffect
   useExposedActions(handlers) {
-    (0, import_react3.useEffect)(() => this.registerExposedActions(handlers), [this, handlers]);
+    useEffect3(() => this.registerExposedActions(handlers), [this, handlers]);
   }
   _emitIsSyncedChanged() {
     for (const cb of this._isSyncedSubscribers) {
@@ -658,7 +623,7 @@ var Sync = class {
   }
   // React convenience: returns true when no patches are pending to be flushed
   useIsSynced() {
-    return (0, import_react3.useSyncExternalStore)(
+    return useSyncExternalStore(
       this._subscribeIsSynced,
       () => this._patches.length === 0,
       () => true
@@ -737,15 +702,15 @@ var convertShallowUpdateToImmerPatch = (shallowUpdate) => {
 };
 
 // src/react/synced-reducer.ts
-(0, import_immer2.enablePatches)();
+enablePatches2();
 function useSyncedReducer(key, syncedReducer, initialState, overrideSession = null, sendOnInit = false) {
-  const session = overrideSession ?? (0, import_react4.useContext)(DefaultSessionContext);
+  const session = overrideSession ?? useContext(DefaultSessionContext);
   if (!session) {
     throw new Error(
       "useSyncedReducer requires a Session from context or overrideSession"
     );
   }
-  const syncObj = (0, import_react4.useMemo)(
+  const syncObj = useMemo(
     () => new Sync(key, session, sendOnInit),
     [session, key, sendOnInit]
   );
@@ -763,7 +728,7 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
       // apply a patch to the state, usually sent by the remote on sync
       case patchEvent(key): {
         const patch = action.data;
-        const newState = patch.reduce(import_fast_json_patch.applyReducer, (0, import_fast_json_patch.deepClone)(state2));
+        const newState = patch.reduce(applyReducer, deepClone(state2));
         return [newState, []];
       }
       // any other user-defined action, either locally or by the remote
@@ -784,8 +749,8 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
             sendAction(actionOverride ?? action);
           });
         };
-        const [newState, patches] = (0, import_immer2.produceWithPatches)(syncedReducer)(
-          (0, import_immer2.castImmutable)(state2),
+        const [newState, patches] = produceWithPatches(syncedReducer)(
+          castImmutable(state2),
           action,
           sync,
           delegate
@@ -797,11 +762,11 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
       }
     }
   };
-  const [[state, effects], dispatch] = (0, import_react4.useReducer)(wrappedReducer, [
+  const [[state, effects], dispatch] = useReducer(wrappedReducer, [
     initialState,
     []
   ]);
-  (0, import_react4.useEffect)(() => {
+  useEffect4(() => {
     if (effects.length === 0) return;
     effects.forEach((f) => f());
     effects.splice(0, effects.length);
@@ -815,9 +780,9 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
   const actionState = (action) => {
     dispatch(action);
   };
-  const latestStateRef = (0, import_react4.useRef)(state);
+  const latestStateRef = useRef(state);
   latestStateRef.current = state;
-  (0, import_react4.useEffect)(() => {
+  useEffect4(() => {
     return syncObj.registerHandlers(
       () => latestStateRef.current,
       setState,
@@ -825,7 +790,7 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
       actionState
     );
   }, [syncObj]);
-  const setters = (0, import_react4.useMemo)(() => {
+  const setters = useMemo(() => {
     const result = {};
     Object.keys(initialState).forEach((attr) => {
       const attrStr = String(attr);
@@ -852,7 +817,7 @@ function useSyncedReducer(key, syncedReducer, initialState, overrideSession = nu
     });
     return result;
   }, [initialState, patchState, key, session, syncObj]);
-  const stateWithSync = (0, import_react4.useMemo)(
+  const stateWithSync = useMemo(
     () => ({
       ...state,
       ...setters,
@@ -885,7 +850,7 @@ function useObserved(key, initialState, overrideSession = null) {
     overrideSession,
     false
   );
-  const readonlyState = (0, import_react4.useMemo)(() => {
+  const readonlyState = useMemo(() => {
     const result = {};
     Object.keys(initialState).forEach((k) => {
       result[k] = stateWithSync[k];
@@ -897,9 +862,9 @@ function useObserved(key, initialState, overrideSession = null) {
 }
 
 // src/remote-toast.ts
-var import_react5 = require("react");
+import { useEffect as useEffect5 } from "react";
 var useRemoteToast = (session, toast, prefix = "") => {
-  (0, import_react5.useEffect)(() => {
+  useEffect5(() => {
     session?.registerEvent("_TOAST", ({ message, type }) => {
       switch (type) {
         case "default":
@@ -931,10 +896,10 @@ var useRemoteToast = (session, toast, prefix = "") => {
 };
 
 // src/zustand/synced-store.ts
-var import_fast_json_patch2 = require("fast-json-patch");
-var import_immer3 = require("immer");
-var import_middleware = require("zustand/middleware");
-(0, import_immer3.enablePatches)();
+import { applyReducer as applyReducer2, deepClone as deepClone2 } from "fast-json-patch";
+import { enablePatches as enablePatches3, produceWithPatches as produceWithPatches2 } from "immer";
+import "zustand/middleware";
+enablePatches3();
 var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
   const syncAttributes = Array.isArray(
     syncOptions.syncAttributes
@@ -978,7 +943,7 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
           Object.assign(draft, result);
         }
       };
-      const newStateCreator = (0, import_immer3.produceWithPatches)(producer);
+      const newStateCreator = produceWithPatches2(producer);
       const current = get();
       const [newState, patches] = newStateCreator(current);
       const filteredPatches = filterImmerPatches(patches);
@@ -1006,7 +971,7 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
     },
     (patches) => {
       const current = extractSyncedSubset(get());
-      const next = patches.reduce(import_fast_json_patch2.applyReducer, (0, import_fast_json_patch2.deepClone)(current));
+      const next = patches.reduce(applyReducer2, deepClone2(current));
       set(next);
     },
     (action) => {
@@ -1047,8 +1012,7 @@ var syncedImpl = (stateCreator, syncOptions) => (set, get, store) => {
   return stateCreator(store.setState, get, newStore);
 };
 var synced = syncedImpl;
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
+export {
   DefaultSessionContext,
   Session,
   SessionProvider,
@@ -1057,5 +1021,5 @@ var synced = syncedImpl;
   useRemoteToast,
   useSynced,
   useSyncedReducer
-});
-//# sourceMappingURL=index.js.map
+};
+//# sourceMappingURL=index.mjs.map

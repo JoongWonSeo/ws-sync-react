@@ -2,143 +2,438 @@
 
 This library defines a very simple WebSocket and JSON & JSON Patch based protocol for keeping the backend and the react frontend in sync. There's a corresponding [python library](https://github.com/JoongWonSeo/ws-sync) that implements the backend side of the protocol.
 
+## Philosophy
+
+Following Zustand's philosophy: **keep as much complex app state in pure JavaScript as possible**, so that React can focus on being pure UI rather than having all the complex state logic inside components. This means:
+
+- State and actions live outside React components
+- React components select only what they need to render
+- Syncing with the backend is transparent to React
 
 ## Quick Start
 
 Install the package:
 
 ```bash
-npm install ws-sync
+npm install ws-sync zustand
 ```
 
-A simple synced component looks like this:
+### 1. Create a global Session
 
-```javascript
-import { useSynced, SessionProvider } from 'ws-sync'
-import { Toaster, toast } from 'sonner'
+The `Session` is a pure JavaScript object that manages the WebSocket connection:
 
-const Notes = () => {
-  const notes = useSynced("NOTES", {
-    title: "temp initial notes",
-    notes: ["these values", "are only shown", "until the websocket connects"],
-  })
+```typescript
+// session.ts
+import { Session } from "ws-sync";
+import { toast } from "sonner";
+
+export const session = new Session(
+  "ws://localhost:8000/ws",
+  "Backend",
+  toast // optional: for connection notifications
+);
+
+// Connect when your app starts
+session.connect();
+```
+
+### 2. Create a synced store
+
+Use Zustand's `create()` with the `synced()` middleware:
+
+```typescript
+// stores/notes.ts
+import { create } from "zustand";
+import { synced } from "ws-sync";
+import { session } from "./session";
+
+type Note = { id: string; title: string; content: string };
+type Notes = { notes: Note[]; currentNoteId: string | null };
+
+export const useNotes = create<Notes>()(
+  synced(
+    () => ({
+      notes: [],
+      currentNoteId: null,
+    }),
+    {
+      key: "Notes",
+      session,
+    }
+  )
+);
+```
+
+### 3. Use in React components
+
+Select only what you need to render:
+
+```tsx
+import { useNotes } from "./stores/notes";
+
+function NotesList() {
+  const notes = useNotes((s) => s.notes);
+  const currentId = useNotes((s) => s.currentNoteId);
+
+  return (
+    <ul>
+      {notes.map((note) => (
+        <li key={note.id} className={note.id === currentId ? "active" : ""}>
+          {note.title}
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## State Updates with Immer
+
+The `synced` middleware includes Immer, which lets you write "mutating" code that's actually immutable. **For complex or nested state updates, Immer generates more efficient JSON patches** that get synced over the WebSocket.
+
+```typescript
+const { setState: set, sync } = useNotes;
+
+// Simple object update (shallow merge)
+set({ currentNoteId: "note-1" });
+
+// Immer-style mutation (for nested updates)
+set((draft) => {
+  const note = draft.notes.find((n) => n.id === "note-1");
+  if (note) {
+    note.title = "Updated Title";
+  }
+});
+
+// After updating, sync to backend
+sync();
+```
+
+The Immer approach generates precise JSON patches like `[{ op: "replace", path: "/notes/0/title", value: "Updated Title" }]` instead of sending the entire `notes` array.
+
+## The `sync` API
+
+The `synced` middleware attaches a `sync` object to your store with helpful methods:
+
+```typescript
+// Access it from the hook
+const sync = useNotes.sync;
+
+// Or inside the state creator
+const useNotes = create<Notes & NotesActions>()(
+  synced(
+    (set, get, store) => ({
+      // store.sync is available here
+      notes: [],
+      currentNoteId: null,
+      selectNote: (id: string | null) => {
+        set({ currentNoteId: id });
+        store.sync();
+      },
+    }),
+    { key: "Notes", session }
+  )
+);
+```
+
+### Flush local changes
+
+Call `sync()` after local updates to send patches to the backend:
+
+```typescript
+const { setState: set, sync } = useNotes;
+
+export const selectNote = (id: string | null) => {
+  set({ currentNoteId: id });
+  sync(); // send patch to backend
+};
+
+// For frequently updated fields, debounce:
+export const updateNoteContent = (id: string, content: string) => {
+  set((draft) => {
+    const note = draft.notes.find((n) => n.id === id);
+    if (note) note.content = content;
+  });
+  sync({ debounceMs: 500, maxWaitMs: 1000 }); // send every 0.5s - 1s
+};
+```
+
+### Remote actions (backend-owned state)
+
+When the backend owns the state, create delegators that send actions to the server:
+
+```typescript
+// generated types from your backend
+import { NotesActionsKeys, type NotesActionsParams } from "./api/types";
+
+const { sync } = useNotes;
+
+export const notesRemote = sync.createDelegators<NotesActionsParams>()({
+  add: NotesActionsKeys.addNote,
+  remove: NotesActionsKeys.removeNote,
+  archive: NotesActionsKeys.archiveNote,
+});
+
+// Usage
+notesRemote.add({ note: { id: "1", title: "New Note", content: "" } });
+// sends: { type: "addNote", note: { ... } }
+```
+
+The backend processes the action, updates state, and sends patches back. The store updates and React re-renders.
+
+### Exposed actions (server can call client)
+
+Let the backend trigger client-side behaviors:
+
+```typescript
+const { sync } = useNotes;
+
+// In a component
+sync.useExposedActions({
+  scrollToNote: (noteId: string) => {
+    document.getElementById(noteId)?.scrollIntoView();
+  },
+  showNotification: (message: string) => {
+    toast.info(message);
+  },
+});
+```
+
+### Other useful methods
+
+```typescript
+sync.fetchRemoteState(); // Request full state from backend
+sync.sendState(state); // Push full state to backend
+sync.useIsSynced(); // Hook: true when no pending patches
+sync.sendBinary(action, data); // Send binary data with action
+sync.startTask(task); // Start cancellable background task
+sync.cancelTask(taskType); // Cancel running task
+```
+
+## Actions Pattern
+
+Unlike the Zustand doc's recommendation, we recommend defining actions **outside the store**:
+
+```typescript
+// stores/notes.ts
+import { create } from "zustand";
+import { synced } from "ws-sync";
+import { session } from "./session";
+
+type Note = { id: string; title: string; content: string };
+type Notes = { notes: Note[]; currentNoteId: string | null };
+
+// State-only store
+export const useNotes = create<Notes>()(
+  synced(() => ({ notes: [], currentNoteId: null }), { key: "Notes", session })
+);
+
+// ========== Actions ========== //
+const { setState: set, sync } = useNotes;
+
+// Local actions (frontend owns these fields)
+export const selectNote = (id: string | null) => {
+  set({ currentNoteId: id });
+  sync();
+};
+
+export const updateNoteLocally = (
+  id: string,
+  title: string,
+  content: string
+) => {
+  set((draft) => {
+    const note = draft.notes.find((n) => n.id === id);
+    if (note) {
+      note.title = title;
+      note.content = content;
+    }
+  });
+  sync({ debounceMs: 500 });
+};
+
+// Remote actions (backend owns these operations)
+import { NotesActionsKeys, type NotesActionsParams } from "./api/types";
+
+export const notesRemote = sync.createDelegators<NotesActionsParams>()({
+  add: NotesActionsKeys.addNote,
+  remove: NotesActionsKeys.removeNote,
+  save: NotesActionsKeys.saveNote,
+});
+```
+
+Usage in components:
+
+```tsx
+import {
+  useNotes,
+  selectNote,
+  updateNoteLocally,
+  notesRemote,
+} from "./stores/notes";
+
+function NoteEditor() {
+  const note = useNotes((s) => s.notes.find((n) => n.id === s.currentNoteId));
+  const isSynced = useNotes.sync.useIsSynced();
 
   return (
     <div>
-      <h1>{notes.title}</h1>
-      <input value={notes.title} onChange={e => notes.syncTitle(e.target.value)} />
-      <ul>{notes.notes.map(note => <li>{note}</li>)}</ul>
+      <input
+        value={note?.title ?? ""}
+        onChange={(e) =>
+          updateNoteLocally(note!.id, e.target.value, note!.content)
+        }
+      />
+      <textarea
+        value={note?.content ?? ""}
+        onChange={(e) =>
+          updateNoteLocally(note!.id, note!.title, e.target.value)
+        }
+      />
+      <button
+        onClick={() => notesRemote.save({ noteId: note!.id })}
+        disabled={!isSynced}
+      >
+        Save to Backend {isSynced ? "✓" : "⏳"}
+      </button>
     </div>
-  )
+  );
 }
+```
 
-function App() {
-  return (
-    <SessionProvider
-      url="ws://localhost:8000/ws"
-      toast={toast}
-      autoconnect
-    >
-      <Notes />
-      <Toaster />
-    </SessionProvider>
+This has a few advantages:
+
+- Directly import the action, no need to select it
+- Store type only includes the state, not the actions
+- No need to worry about action identity
+- No way to accidentally remove the action from the store
+- No need to filter them out when syncing, persisting, etc.
+- Can split actions into different locations
+- Easier for one action to call another action, even for other stores
+- Makes it inherently clear that actions are nothing more than functions that mutate the state
+
+However, there are some cases where in-store actions are useful:
+
+- When you have dynamic stores (see below), the actions need to be created dynamically, since you need to differentiate between the actions of different stores
+- Maybe you need to swap out the action implementation, i.e. the action itself is a state, so it'd make sense to keep it in the store
+
+## Advanced Patterns
+
+### Helper for multiple middlewares
+
+When using multiple Zustand middlewares (devtools, persist, immer, synced), you can create a helper to avoid deeply nested wrapping:
+
+```typescript
+// store-config.ts
+import { create } from "zustand";
+import { devtools, persist } from "zustand/middleware";
+import { synced, type SyncOptions } from "ws-sync";
+
+export function createSyncedStore<State>({
+  initialState,
+  syncOptions,
+  persistOptions,
+  devtoolsOptions,
+}: {
+  initialState: State;
+  syncOptions: SyncOptions;
+  persistOptions?: any;
+  devtoolsOptions?: any;
+}) {
+  return create<State>()(
+    devtools(
+      persist(
+        synced(() => initialState, syncOptions),
+        persistOptions ?? {
+          name: "DISABLED",
+          partialize: () => ({}),
+          skipHydration: true,
+        }
+      ),
+      devtoolsOptions
+    )
   );
 }
 
-export default App;
+// Usage
+export const useNotes = createSyncedStore<Notes>({
+  initialState: { notes: [], currentNoteId: null },
+  syncOptions: { key: "Notes", session },
+  persistOptions: { name: "notes-cache" },
+  devtoolsOptions: { name: "NotesStore" },
+});
 ```
 
-- The `useSynced` hook is used like `useState`, but it syncs the state with the server.
-- The `SessionProvider` component is used to define the WebSocket connection, and the `toast` function is from the [sonner](https://sonner.emilkowal.ski/) library, which is used to show toast notifications (not required, but recommended).
+### Separating synced vs local state
 
+Use `syncAttributes` to specify which fields should sync. Other fields stay local:
 
-### The `useSynced` hook
-
-Where you'd normally use `useState`, use `useSynced` instead, if you want the state to be synced with the server. The first argument is the key to use to identify the state (should match the backend key), and the second argument is the initial state, which is used before the synced state is received (but also useful to easily understand the shape of the state).
-
-The object returned by `useSynced` has:
-
-- **All the properties** as defined by the initial state, but then overwritten by the synced state from the server. Therefore, you should ensure that the backend sends all the properties that you expect.
-
-- For each property `myProp`:
-    - a **setter function `setMyProp(x)`**, which locally updates the property, exactly like with `useState`, and
-    - a **syncer function `syncMyProp(x)`**, which locally updates the property **and sends the update to the server**, such that it is automatically updated in the backend as well.
-
-- Some additional functions that are always available:
-    - `sendAction({type: "MY_ACTION", my_arg: "my_values", arg2: 123})`:  
-    Essentially like calling a function on the backend, with the matching action key and keyword arguments. The backend should have a corresponding action handler for this action key.  
-    An action is "blocking the backend", i.e. the backend will not process any other actions until this action is completed. This guarantees a sequential order of actions. However, *sending an action* is not blocking the frontend, i.e. this function call **does not wait for the action to be completed**.
-
-    - `startTask({type: "MY_TASK", my_arg: "my_values", arg2: 123})`:  
-    Similar to actions, but for long-running tasks, i.e. it's non-blocking for the backend and cancellable.
-
-    - `cancelTask({type: "MY_TASK"})`:  
-    Cancel a task that was started with `startTask`.
-
-    - `sendBinary({type: "MY_ACTION", my_arg: 123}, data)`:  
-    Like `sendAction`, but sends binary data alongside the action. The backend should have a corresponding action handler with a `data` parameter.
-
-    - `fetchRemoteState()`:  
-    Explicitly request a fetch of the (entire) backend state. You rarely have to manually call this, as the backend will (by default) automatically send the state when the connection is established[^1].
-    
-- Finally, if the backend opted to expose it, a list of currently running tasks (their keys) is available as `runningTasks`. If using this, don't forget to add `runningTasks` to the initial state as well.
-
-[^1]: One case where you need this is when this component is mounted after the connection is established.
-
-
-### The `useSyncedReducer` hook
-
-Usually, the state is "owned" and managed by the backend, and the frontend is often just a "dumb" renderer of the state, with barely any state-maniuplation logic. However, for better latency and user experience, it is often useful to have some state-manipulation logic on the frontend side as well. Or, sometimes, the backend must trigger some actions in the frontend, rather than just updating the state to be rendered (e.g. show an alert box). This is where the `useSyncedReducer` hook comes in.
-
-This is a more advanced hook, similar to the `useReducer` hook, where you define a reducer function that handles all the actions. The reducer function is called with the current state, the action (triggered by either `sendAction`, `startTask`, `cancelTask`, or `sendBinary`, OR directly triggered by the backend), and the `sync` and `delegate` functions.
-
-While the first two arguments are the same as with `useReducer`, the `sync` function can be called to sync the state with the server, and the `delegate` function can be used to delegate the action to the backend. This give you an explicit control over *where the action is processed*. This is important that you clearly decide which actions are processed locally and which are processed on the backend, in order to prevent an infinite loop of delegating actions back and forth, or to prevent the frontend from getting out of sync with the backend.
-
-The reducer function is actually like [the immer library's `useImmerReducer` hook](https://immerjs.github.io/immer/example-setstate#useimmerreducer), so you can directly modify the state, instead of returning a new state.
-
-```javascript
-const reduceNotes: SyncedReducer<Notes> = (notes, action, sync, delegate) => {
-  switch (action.type) {
-    // ========== backend triggered -> locally processed ========== //
-    case "SCROLL_TO_BOTTOM":
-      window.scrollTo(0, document.body.scrollHeight)
-      break
-
-    // ========== locally triggered -> locally processed ========== //
-    case "ADD_NOTE":
-      notes.notes.push(action.note)
-      sync() // update the backend
-      break
-    case "REMOVE_NOTE":
-      notes.notes.splice(action.index, 1)
-      sync() // update the backend
-      break
-    
-    // ========== locally triggered -> delegated to the backend ========== //
-    case "REVERSE_NOTES":
-    case "DO_SOMETHING_ELSE":
-      delegate() // the actions are simply delegated to the backend
-      break
-  }
+```typescript
+interface LocalState {
+  isEditorOpen: boolean;
+  selectedTab: "edit" | "preview";
 }
+
+export const useNotes = create<Notes & LocalState>()(
+  synced(
+    () => ({
+      // synced state
+      notes: [],
+      currentNoteId: null,
+      // local state (never synced)
+      isEditorOpen: false,
+      selectedTab: "edit",
+    }),
+    {
+      key: "Notes",
+      session,
+      syncAttributes: ["notes", "currentNoteId"], // only sync these fields
+    }
+  )
+);
 ```
 
-Again to emphasize: actions should be either locally processed or delegated to the backend, and you should clearly separate them in your reducer function. The `sync` function should be called after you've modified the state locally, and the `delegate` function should be called if you want the backend to process the action.
+### Dynamic stores with providers
 
-Note that if an action is only ever *processed* on the frontend, you don't need to define it in the backend. But if an action is *triggered* by the frontend, then you always need to handle it in the reducer function, since *every action* is handled by the reducer function.
+For apps that need multiple instances of the same store (e.g., chat rooms, collaborative documents), create stores dynamically:
 
-In short, the reducer function is the immediate handler of all actions, no matter whether triggered locally or remotely, and it decides where (and how) the action is processed.
+```typescript
+import { createStore, useStore } from "zustand";
+import { create } from "zustand";
 
+// Factory function
+export const createChatStore = (roomId: string) =>
+  createStore<ChatRoom>()(
+    synced(() => ({ messages: [], members: [] }), {
+      key: `ChatRoom:${roomId}`,
+      session,
+    })
+  );
 
-### The `SessionProvider` component
+// Registry to manage instances
+interface ChatRegistry {
+  rooms: Record<string, ReturnType<typeof createChatStore>>;
+}
 
-This is usually just done once in the root component of your app, and it provides the WebSocket connection to the backend. The `url` prop is the URL of the WebSocket server, and the `toast` prop is a function that is used to show toast notifications.
+export const useChatRegistry = create<ChatRegistry>(() => ({ rooms: {} }));
 
+// Hook to access a specific room
+export const useChatRoom = <T>(
+  roomId: string,
+  selector: (s: ChatRoom) => T
+) => {
+  const registry = useChatRegistry((s) => s.rooms);
 
-### The `useRemoteToast` hook
+  // Create store on first access
+  if (!registry[roomId]) {
+    useChatRegistry.setState((s) => {
+      s.rooms[roomId] = createChatStore(roomId);
+    });
+  }
 
-This simple hook enables the backend to show toast notifications on the frontend.
-
+  return useStore(registry[roomId], selector);
+};
+```
 
 ## Development & Publishing
 
@@ -147,5 +442,6 @@ After you make changes (don't forget to bump the version number!), run the follo
 ```bash
 npm run build
 npm publish
+```
 
-For more details on how the provider and hooks are organised see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+For more details on the Zustand integration and advanced patterns, see [docs/zustand.md](docs/zustand.md).

@@ -58,6 +58,29 @@ describe("useSyncedReducer: event wiring and teardown", () => {
     expect(Object.keys(session.events)).toHaveLength(0);
     expect(Object.keys(session.inits)).toHaveLength(0);
   });
+
+  test("init callback sends latest state snapshot when invoked", () => {
+    const session = new MockSession();
+    const wrapper = withSession(session as any);
+    const { result } = renderHook(
+      () => useSynced("INIT", { count: 0 }, null, true),
+      { wrapper }
+    );
+
+    // Change local state before init is invoked
+    act(() => {
+      result.current.setCount(42);
+    });
+
+    // Simulate backend calling init handler
+    act(() => {
+      session.inits["INIT"]?.();
+    });
+
+    // It should send the full state with the latest value
+    const last = session.sent.pop();
+    expect(last).toEqual({ event: "_SET:INIT", data: { count: 42 } });
+  });
 });
 
 describe("useSyncedReducer: remote set/patch and local setters/syncers", () => {
@@ -199,6 +222,28 @@ describe("useSyncedReducer: custom reducer sync/delegate behavior", () => {
       dispatch({ type: "LOCAL_ONLY" });
     });
     expect(session.sent.length).toBe(before);
+  });
+});
+
+describe("useSyncedReducer: routes remote ACTION through reducer", () => {
+  test("remote _ACTION updates state via supplied reducer", () => {
+    const session = new MockSession();
+    const wrapper = withSession(session as any);
+    const reducer = (draft: { v: number }, action: any) => {
+      if (action.type === "ADD") {
+        draft.v += action.by;
+      }
+    };
+
+    const { result } = renderHook(
+      () => useSyncedReducer("ACT", reducer as any, { v: 1 }),
+      { wrapper }
+    );
+
+    act(() => {
+      session.events["_ACTION:ACT"]({ type: "ADD", by: 3 });
+    });
+    expect(result.current[0].v).toBe(4);
   });
 });
 

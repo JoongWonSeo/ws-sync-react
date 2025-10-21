@@ -1,11 +1,7 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
+import WS from "jest-websocket-mock";
 import React, { useContext } from "react";
 import { DefaultSessionContext, SessionProvider } from "../src/session";
-import {
-  MockWebSocket,
-  installMockWebSocket,
-  restoreMockWebSocket,
-} from "./utils/mocks";
 
 // Use real timers to avoid interference with other test files
 beforeEach(() => {
@@ -22,18 +18,12 @@ jest.mock("uuid", () => ({
   },
 }));
 
-beforeAll(() => {
-  installMockWebSocket();
-});
-afterAll(() => {
-  restoreMockWebSocket();
-});
 afterEach(() => {
   cleanup();
   uuidCalls = [];
-  MockWebSocket.instances = [];
   window.localStorage.clear();
   window.sessionStorage.clear();
+  WS.clean();
 });
 
 function createToastMock() {
@@ -52,7 +42,8 @@ function LabelProbe() {
 }
 
 describe("SessionProvider lifecycle", () => {
-  test("autoconnect connects on mount and disconnects on unmount", () => {
+  test("autoconnect connects on mount and disconnects on unmount", async () => {
+    const server = new WS("ws://localhost/a", { jsonProtocol: true });
     const toast = createToastMock();
     const { unmount } = render(
       <SessionProvider url="ws://localhost/a" toast={toast} autoconnect>
@@ -60,15 +51,10 @@ describe("SessionProvider lifecycle", () => {
       </SessionProvider>
     );
 
-    expect(MockWebSocket.instances).toHaveLength(1);
-    expect(MockWebSocket.instances[0].url).toBe("ws://localhost/a");
-
-    // Simulate open
-    MockWebSocket.instances[0].open();
-    expect(MockWebSocket.instances[0].readyState).toBe(MockWebSocket.OPEN);
+    await server.connected;
 
     unmount();
-    expect(MockWebSocket.instances[0].readyState).toBe(MockWebSocket.CLOSED);
+    await server.closed;
   });
 
   test("updates label and toast when props change", async () => {
@@ -99,32 +85,30 @@ describe("SessionProvider lifecycle", () => {
     expect(screen.getByTestId("label").textContent).toBe("Server B");
   });
 
-  test("creates new session when url changes and disconnects old one", () => {
+  test("creates new session when url changes and disconnects old one", async () => {
+    const serverA = new WS("ws://localhost/a", { jsonProtocol: true });
+    const serverB = new WS("ws://localhost/b", { jsonProtocol: true });
     const toast = createToastMock();
     const { rerender } = render(
       <SessionProvider url="ws://localhost/a" toast={toast} autoconnect>
         <div />
       </SessionProvider>
     );
-    expect(MockWebSocket.instances).toHaveLength(1);
-    const first = MockWebSocket.instances[0];
-    first.open();
+    await serverA.connected;
 
     rerender(
       <SessionProvider url="ws://localhost/b" toast={toast} autoconnect>
         <div />
       </SessionProvider>
     );
-
-    // Old should be closed, new should be created
-    expect(first.readyState).toBe(MockWebSocket.CLOSED);
-    expect(MockWebSocket.instances).toHaveLength(2);
-    expect(MockWebSocket.instances[1].url).toBe("ws://localhost/b");
+    await serverB.connected;
+    await serverA.closed;
   });
 });
 
 describe("SessionProvider wsAuth", () => {
   test("generates and persists ids then responds to _REQUEST_USER_SESSION", async () => {
+    const server = new WS("ws://localhost/a", { jsonProtocol: true });
     const toast = createToastMock();
     render(
       <SessionProvider url="ws://localhost/a" toast={toast} autoconnect wsAuth>
@@ -132,19 +116,15 @@ describe("SessionProvider wsAuth", () => {
       </SessionProvider>
     );
 
-    const ws = MockWebSocket.instances[0];
-    ws.open();
+    await server.connected;
 
     // Backend requests user/session
     await act(async () => {
-      ws.receive(JSON.stringify({ type: "_REQUEST_USER_SESSION", data: {} }));
+      server.send({ type: "_REQUEST_USER_SESSION", data: {} });
     });
 
     // Session should send _USER_SESSION with mocked UUIDs
-    const sent = ws.sent.map((x) =>
-      typeof x === "string" ? JSON.parse(x) : x
-    );
-    const meta = sent.find((f: any) => f.type === "_USER_SESSION");
+    const meta = (await server.nextMessage) as any;
     expect(meta).toEqual({
       type: "_USER_SESSION",
       data: { user: "USER-1", session: "SESS-1" },
@@ -161,6 +141,7 @@ describe("SessionProvider wsAuth", () => {
   });
 
   test("reuses existing ids without calling uuid", async () => {
+    const server = new WS("ws://localhost/a", { jsonProtocol: true });
     window.localStorage.setItem("_USER_ID", JSON.stringify("EXISTING-U"));
     window.sessionStorage.setItem("_SESSION_ID", JSON.stringify("EXISTING-S"));
 
@@ -171,17 +152,13 @@ describe("SessionProvider wsAuth", () => {
       </SessionProvider>
     );
 
-    const ws = MockWebSocket.instances[0];
-    ws.open();
+    await server.connected;
 
     await act(async () => {
-      ws.receive(JSON.stringify({ type: "_REQUEST_USER_SESSION", data: {} }));
+      server.send({ type: "_REQUEST_USER_SESSION", data: {} });
     });
 
-    const sent = ws.sent.map((x) =>
-      typeof x === "string" ? JSON.parse(x) : x
-    );
-    const meta = sent.find((f: any) => f.type === "_USER_SESSION");
+    const meta = (await server.nextMessage) as any;
     expect(meta).toEqual({
       type: "_USER_SESSION",
       data: { user: "EXISTING-U", session: "EXISTING-S" },
