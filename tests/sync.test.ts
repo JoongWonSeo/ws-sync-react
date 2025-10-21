@@ -307,7 +307,10 @@ describe("Sync task delegators", () => {
     tasks.restore.cancel();
 
     expect(session.sent).toEqual([
-      { event: "_TASK_START:TSK", data: { type: "BACKUP", destination: "/backup" } },
+      {
+        event: "_TASK_START:TSK",
+        data: { type: "BACKUP", destination: "/backup" },
+      },
       { event: "_TASK_START:TSK", data: { type: "RESTORE" } },
       { event: "_TASK_CANCEL:TSK", data: { type: "BACKUP" } },
       { event: "_TASK_CANCEL:TSK", data: { type: "RESTORE" } },

@@ -1,3 +1,5 @@
+type Empty = Record<string, never>;
+
 /**
  * Utility type that creates action functions from a mapping of action names to parameter types.
  *
@@ -28,7 +30,7 @@ export type Actions<
   KeyToParams
 > = {
   [N in keyof NameToKey]: KeyToParams[NameToKey[N]] extends null
-    ? () => void //TODO: this is a lie, it's actually an optional empty arg that defaults to {} and must be {}
+    ? (empty?: Empty) => void // accepts no args or empty object only
     : (args: KeyToParams[NameToKey[N]]) => void;
 };
 
@@ -68,7 +70,7 @@ export type Tasks<
 > = {
   [N in keyof NameToKey]: {
     start: KeyToParams[NameToKey[N]] extends null
-      ? () => void
+      ? (empty?: Empty) => void // accepts no args or empty object only
       : (args: KeyToParams[NameToKey[N]]) => void;
     cancel: () => void;
   };
