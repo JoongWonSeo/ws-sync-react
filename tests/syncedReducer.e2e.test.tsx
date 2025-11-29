@@ -55,7 +55,7 @@ describe("synced reducer e2e with real Session + mocked ws", () => {
   test("remote _SET and _PATCH update state and cause re-render", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
 
     render(
       <DefaultSessionContext.Provider value={session}>
@@ -87,7 +87,7 @@ describe("synced reducer e2e with real Session + mocked ws", () => {
   test("local dispatch triggers patch send; remote _ACTION routes through reducer", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
 
     render(
       <DefaultSessionContext.Provider value={session}>
@@ -156,7 +156,7 @@ describe("useSynced e2e setters vs syncers", () => {
   test("setters update UI without emitting network; syncers emit _PATCH", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
 
     render(
       <DefaultSessionContext.Provider value={session}>
@@ -205,7 +205,7 @@ describe("useSynced e2e setters vs syncers", () => {
   test("mixing set and sync sends only synced field patch", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
 
     render(
       <DefaultSessionContext.Provider value={session}>
@@ -258,7 +258,7 @@ describe("additional coverage for synced-reducer.ts", () => {
       );
     }
 
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
@@ -283,7 +283,7 @@ describe("additional coverage for synced-reducer.ts", () => {
   });
 
   test("_GET triggers sendState of current snapshot (covers getState path)", async () => {
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
@@ -326,7 +326,7 @@ describe("additional coverage for synced-reducer.ts", () => {
       );
     }
 
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
@@ -356,7 +356,7 @@ describe("additional coverage for synced-reducer.ts", () => {
       );
     }
 
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
@@ -387,7 +387,7 @@ describe("additional coverage for synced-reducer.ts", () => {
       );
     }
 
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     const server = new WS("ws://localhost", { jsonProtocol: true });
     render(
       <DefaultSessionContext.Provider value={session}>
@@ -418,7 +418,7 @@ describe("additional coverage for synced-reducer.ts", () => {
 
   test("_PATCH produces new state identity and triggers [state] effect", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
 
     type S = { count: number; nested: { v: number } };
 
@@ -493,7 +493,7 @@ describe("additional coverage for synced-reducer.ts", () => {
 
   test("previous snapshot is not mutated by _PATCH (immutability)", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
 
     type S = { obj: { a: number; b: number } };
 

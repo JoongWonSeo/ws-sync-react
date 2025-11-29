@@ -26,7 +26,7 @@ afterEach(() => {
 
 describe("Session event management", () => {
   test("register and deregister events", () => {
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
 
     const handler = jest.fn();
     session.registerEvent("HELLO", handler);
@@ -37,7 +37,7 @@ describe("Session event management", () => {
   });
 
   test("register/deregister init handlers", () => {
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     const init = jest.fn();
     session.registerInit("key", init);
     expect(() => session.registerInit("key", init)).toThrow();
@@ -46,19 +46,79 @@ describe("Session event management", () => {
   });
 
   test("register/deregister binary handler", () => {
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     const bin = jest.fn();
     session.registerBinary(bin);
     expect(() => session.registerBinary(bin)).toThrow();
     session.deregisterBinary();
     expect(() => session.deregisterBinary()).toThrow();
   });
+
+  test("override allows re-registering event handlers via parameter", () => {
+    const session = new Session({ url: "ws://localhost" });
+    const handler1 = jest.fn();
+    const handler2 = jest.fn();
+
+    session.registerEvent("TEST", handler1);
+    // Should not throw when override=true
+    expect(() => session.registerEvent("TEST", handler2, true)).not.toThrow();
+  });
+
+  test("override allows re-registering init handlers via parameter", () => {
+    const session = new Session({ url: "ws://localhost" });
+    const init1 = jest.fn();
+    const init2 = jest.fn();
+
+    session.registerInit("key", init1);
+    // Should not throw when override=true
+    expect(() => session.registerInit("key", init2, true)).not.toThrow();
+  });
+
+  test("override allows re-registering binary handler via parameter", () => {
+    const session = new Session({ url: "ws://localhost" });
+    const bin1 = jest.fn();
+    const bin2 = jest.fn();
+
+    session.registerBinary(bin1);
+    // Should not throw when override=true
+    expect(() => session.registerBinary(bin2, true)).not.toThrow();
+  });
+
+  test("default override from constructor allows re-registering", () => {
+    const session = new Session({ url: "ws://localhost", override: true });
+    const handler1 = jest.fn();
+    const handler2 = jest.fn();
+
+    session.registerEvent("TEST", handler1);
+    // Should not throw because session has default override=true
+    expect(() => session.registerEvent("TEST", handler2)).not.toThrow();
+
+    const init1 = jest.fn();
+    const init2 = jest.fn();
+    session.registerInit("key", init1);
+    expect(() => session.registerInit("key", init2)).not.toThrow();
+
+    const bin1 = jest.fn();
+    const bin2 = jest.fn();
+    session.registerBinary(bin1);
+    expect(() => session.registerBinary(bin2)).not.toThrow();
+  });
+
+  test("explicit override parameter overrides session default", () => {
+    const session = new Session({ url: "ws://localhost", override: true });
+    const handler1 = jest.fn();
+    const handler2 = jest.fn();
+
+    session.registerEvent("TEST", handler1);
+    // Explicitly set override=false should throw even though session default is true
+    expect(() => session.registerEvent("TEST", handler2, false)).toThrow();
+  });
 });
 
 describe("Session send APIs", () => {
   test("send while not connected warns and does not send", () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Server", toast);
+    const session = new Session({ url: "ws://localhost", label: "Server", toast });
     // not connected -> ws is null
     session.send("FOO", { bar: 1 });
     expect(toast.error).toHaveBeenCalled();
@@ -66,7 +126,7 @@ describe("Session send APIs", () => {
 
   test("send when connected serializes payload", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Server", toast);
+    const session = new Session({ url: "ws://localhost", label: "Server", toast });
     const cleanup = session.connect();
     expect(toast.info).toHaveBeenCalled();
     await server.connected;
@@ -81,7 +141,7 @@ describe("Session send APIs", () => {
 
   test("sendBinary sends meta then raw data", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Server", toast);
+    const session = new Session({ url: "ws://localhost", label: "Server", toast });
     const cleanup = session.connect();
     await server.connected;
 
@@ -104,12 +164,12 @@ describe("Session send APIs", () => {
 describe("Session websocket lifecycle", () => {
   test("connect configures ws, sets binaryType and connection flags", async () => {
     const toast = createToastMock();
-    const session = new Session(
-      "ws://localhost",
-      "MySrv",
+    const session = new Session({
+      url: "ws://localhost",
+      label: "MySrv",
       toast,
-      "arraybuffer"
-    );
+      binaryType: "arraybuffer",
+    });
     const cleanup = session.connect();
     const client = (await server.connected) as unknown as WebSocket;
     expect(client.binaryType).toBe("arraybuffer");
@@ -119,7 +179,7 @@ describe("Session websocket lifecycle", () => {
 
   test("onConnectionChange callback fires on open/close", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
     const cb = jest.fn();
     session.onConnectionChange = cb;
     const cleanup = session.connect();
@@ -134,9 +194,13 @@ describe("Session websocket lifecycle", () => {
 
   test("auto reconnect schedules retry and doubles interval (single change events per transition)", async () => {
     const toast = createToastMock();
-    const session: any = new Session("ws://localhost", "Srv", toast);
-    session.minRetryInterval = 20;
-    session.maxRetryInterval = 10000;
+    const session: any = new Session({
+      url: "ws://localhost",
+      label: "Srv",
+      toast,
+      minRetryInterval: 20,
+      maxRetryInterval: 10000,
+    });
     const cb = jest.fn();
     session.onConnectionChange = cb;
     const cleanup = session.connect();
@@ -161,7 +225,7 @@ describe("Session websocket lifecycle", () => {
 
   test("disconnect disables autoReconnect and sets isConnected false (no duplicate change)", async () => {
     const toast = createToastMock();
-    const session: any = new Session("ws://localhost", "Srv", toast);
+    const session: any = new Session({ url: "ws://localhost", label: "Srv", toast });
     const cb = jest.fn();
     session.onConnectionChange = cb;
     const cleanup = session.connect();
@@ -179,7 +243,7 @@ describe("Session websocket lifecycle", () => {
 
   test("onerror toasts error and closes socket", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
     const cleanup = session.connect();
     await server.connected;
     // Trigger error and close from server
@@ -192,7 +256,7 @@ describe("Session websocket lifecycle", () => {
 
   test("_DISCONNECT does not double-fire onConnectionChange", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
     const cb = jest.fn();
     session.onConnectionChange = cb;
     const cleanup = session.connect();
@@ -210,9 +274,13 @@ describe("Session websocket lifecycle", () => {
 
   test("_DISCONNECT disables retries; manual connect restores retry behavior", async () => {
     const toast = createToastMock();
-    const session: any = new Session("ws://localhost", "Srv", toast);
-    session.minRetryInterval = 10;
-    session.maxRetryInterval = 1000;
+    const session: any = new Session({
+      url: "ws://localhost",
+      label: "Srv",
+      toast,
+      minRetryInterval: 10,
+      maxRetryInterval: 1000,
+    });
     const cleanup = session.connect();
     await server.connected;
     // Trigger graceful server disconnect via special message
@@ -239,7 +307,7 @@ describe("Session websocket lifecycle", () => {
 describe("Session message routing", () => {
   test("routes to registered event handler", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
     const cleanup = session.connect();
     await server.connected;
     const handler = jest.fn();
@@ -252,7 +320,7 @@ describe("Session message routing", () => {
 
   test("handles _DISCONNECT by disconnecting and showing toast exactly once", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
     const cb = jest.fn();
     session.onConnectionChange = cb as any;
     const cleanup = session.connect();
@@ -272,7 +340,7 @@ describe("Session message routing", () => {
 
   test("handles _BIN_META + next binary using eventHandlers", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
     const cleanup = session.connect();
     await server.connected;
     const binHandler = jest.fn();
@@ -295,7 +363,7 @@ describe("Session message routing", () => {
 
   test("routes raw binary to binaryHandler when no bin meta", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
     const cleanup = session.connect();
     await server.connected;
     const rawBin = jest.fn();
@@ -308,7 +376,7 @@ describe("Session message routing", () => {
 
   test("handles _DOWNLOAD by fetching data uri and invoking file download", async () => {
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
     const cleanup = session.connect();
     await server.connected;
 

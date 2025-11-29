@@ -27,11 +27,11 @@ The `Session` is a pure JavaScript object that manages the WebSocket connection:
 import { Session } from "ws-sync";
 import { toast } from "sonner";
 
-export const session = new Session(
-  "ws://localhost:8000/ws",
-  "Backend",
-  toast // optional: for connection notifications
-);
+export const session = new Session({
+  url: "ws://localhost:8000/ws",
+  label: "Backend",
+  toast, // optional: for connection notifications
+});
 
 // Connect when your app starts
 session.connect();

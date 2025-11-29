@@ -138,7 +138,7 @@ var SessionProvider = ({
     console.info(
       `[WS Session] Creating new session for ${label || "Server"} at ${url}`
     );
-    const newSession = new Session(url, label, toast, binaryType);
+    const newSession = new Session({ url, label, toast, binaryType });
     setSession(newSession);
     return () => {
       console.info(
@@ -205,7 +205,7 @@ var SessionProvider = ({
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(context.Provider, { value: session, children });
 };
 var Session = class {
-  constructor(url, label = "Server", toast = null, binaryType = "blob", minRetryInterval = 250, maxRetryInterval = 1e4) {
+  constructor(options) {
     this.ws = null;
     this.isConnected = false;
     this.onConnectionChange = void 0;
@@ -217,16 +217,19 @@ var Session = class {
     this.retryTimeout = null;
     // scheduled retry
     this.autoReconnect = true;
-    this.url = url;
-    this.label = label;
-    this.toast = toast;
-    this.binaryType = binaryType;
-    this.minRetryInterval = minRetryInterval;
-    this.maxRetryInterval = maxRetryInterval;
-    this.retryInterval = minRetryInterval;
+    this.defaultOverride = false;
+    this.url = options.url;
+    this.label = options.label ?? "Server";
+    this.toast = options.toast ?? null;
+    this.binaryType = options.binaryType ?? "blob";
+    this.minRetryInterval = options.minRetryInterval ?? 250;
+    this.maxRetryInterval = options.maxRetryInterval ?? 1e4;
+    this.retryInterval = this.minRetryInterval;
+    this.defaultOverride = options.override ?? false;
   }
-  registerEvent(event, callback) {
-    if (event in this.eventHandlers) {
+  registerEvent(event, callback, override) {
+    const shouldOverride = override ?? this.defaultOverride;
+    if (event in this.eventHandlers && !shouldOverride) {
       console.error(
         `[WS Session] Attempted to registerEvent for ${event}, but handler already exists`
       );
@@ -243,8 +246,9 @@ var Session = class {
     }
     delete this.eventHandlers[event];
   }
-  registerInit(key, callback) {
-    if (key in this.initHandlers) {
+  registerInit(key, callback, override) {
+    const shouldOverride = override ?? this.defaultOverride;
+    if (key in this.initHandlers && !shouldOverride) {
       console.error(
         `[WS Session] Attempted to registerInit with key=${key}, but initHandler already exists`
       );
@@ -262,8 +266,9 @@ var Session = class {
     }
     delete this.initHandlers[key];
   }
-  registerBinary(callback) {
-    if (this.binaryHandler !== null) {
+  registerBinary(callback, override) {
+    const shouldOverride = override ?? this.defaultOverride;
+    if (this.binaryHandler !== null && !shouldOverride) {
       console.error(
         `[WS Session] Attempted to registerBinary, but a binary handler is already registered`
       );

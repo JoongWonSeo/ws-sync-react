@@ -5,6 +5,15 @@ import { Patch, Draft } from 'immer';
 import { StoreMutatorIdentifier, StateCreator } from 'zustand/vanilla';
 
 declare const DefaultSessionContext: Context<Session | null>;
+interface SessionOptions {
+    url: string;
+    label?: string;
+    toast?: any;
+    binaryType?: BinaryType;
+    minRetryInterval?: number;
+    maxRetryInterval?: number;
+    override?: boolean;
+}
 interface SessionProviderProps {
     url: string;
     label?: string;
@@ -33,12 +42,13 @@ declare class Session {
     private binData;
     private retryTimeout;
     private autoReconnect;
-    constructor(url: string, label?: string, toast?: any, binaryType?: BinaryType, minRetryInterval?: number, maxRetryInterval?: number);
-    registerEvent(event: string, callback: (data: any) => void): void;
+    private defaultOverride;
+    constructor(options: SessionOptions);
+    registerEvent(event: string, callback: (data: any) => void, override?: boolean): void;
     deregisterEvent(event: string): void;
-    registerInit(key: string, callback: () => void): void;
+    registerInit(key: string, callback: () => void, override?: boolean): void;
     deregisterInit(key: string): void;
-    registerBinary(callback: (data: any) => void): void;
+    registerBinary(callback: (data: any) => void, override?: boolean): void;
     deregisterBinary(): void;
     send(event: string, data: any): void;
     sendBinary(event: string, metadata: any, data: ArrayBuffer): void;
@@ -47,6 +57,7 @@ declare class Session {
     handleReceiveEvent(e: MessageEvent): void;
 }
 
+type Empty = Record<string, never>;
 /**
  * Utility type that creates action functions from a mapping of action names to parameter types.
  *
@@ -75,7 +86,7 @@ declare class Session {
 type Actions<NameToKey extends {
     [N in keyof NameToKey]: keyof KeyToParams;
 }, KeyToParams> = {
-    [N in keyof NameToKey]: KeyToParams[NameToKey[N]] extends null ? () => void : (args: KeyToParams[NameToKey[N]]) => void;
+    [N in keyof NameToKey]: KeyToParams[NameToKey[N]] extends null ? (empty?: Empty) => void : (args: KeyToParams[NameToKey[N]]) => void;
 };
 /**
  * Utility type that creates task control objects with start/cancel methods.
@@ -111,7 +122,7 @@ type Tasks<NameToKey extends {
     [N in keyof NameToKey]: keyof KeyToParams;
 }, KeyToParams> = {
     [N in keyof NameToKey]: {
-        start: KeyToParams[NameToKey[N]] extends null ? () => void : (args: KeyToParams[NameToKey[N]]) => void;
+        start: KeyToParams[NameToKey[N]] extends null ? (empty?: Empty) => void : (args: KeyToParams[NameToKey[N]]) => void;
         cancel: () => void;
     };
 };

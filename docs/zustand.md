@@ -186,7 +186,7 @@ Under the hood, local updates are converted to Immer patches and sent over a per
 ```ts
 import { Session } from "ws-sync";
 
-export const session = new Session("ws://localhost:8000/ws");
+export const session = new Session({ url: "ws://localhost:8000/ws" });
 session.connect();
 session.disconnect();
 ```
@@ -304,7 +304,7 @@ const title = useNotes((s) => s.notes[i]?.title ?? "");
 ```tsx
 import { Session, SessionProvider } from "ws-sync";
 
-const session = new Session("ws://localhost:8000/ws");
+const session = new Session({ url: "ws://localhost:8000/ws" });
 
 export function App() {
   useEffect(() => {

@@ -15,7 +15,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
   test("remote _SET and _PATCH update state in store", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
     const toast = createToastMock();
-    const session = new Session("ws://localhost", "Srv", toast);
+    const session = new Session({ url: "ws://localhost", label: "Srv", toast });
 
     type S = { count: number };
     const store = create<S>()(
@@ -68,7 +68,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("local set + sync emits _PATCH and updates state", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { count: number; inc: (by: number) => void };
     const store = create<S>()(
       synced(
@@ -119,7 +119,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("remote _ACTION routes to named handler on store", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { count: number; INC: (p: { by: number }) => void };
     const store = create<S>()(
       synced(
@@ -144,7 +144,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("createDelegators helper sends mapped action via _ACTION", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { noop: () => void };
     const store = create<S>()(
       synced(
@@ -178,7 +178,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("fetchRemoteState emits _GET and sendState sends _SET", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { a: number };
     const store = create<S>()(synced(() => ({ a: 1 }), { key: "FS", session }));
 
@@ -202,7 +202,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("local set without sync emits no network but updates state", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { count: number; setOnly: (by: number) => void };
     const store = create<S>()(
       synced(
@@ -229,7 +229,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("multiple local sets before sync flush combine into one _PATCH frame", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { count: number; bump: () => void; flush: () => void };
     const store = create<S>()(
       synced(
@@ -264,7 +264,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("remote _GET triggers _SET with current local snapshot", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { a: number; setA: (v: number) => void };
     const store = create<S>()(
       synced(
@@ -294,7 +294,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("remote _ACTION without handler is ignored and does not throw", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { a: number };
     const store = create<S>()(
       synced(() => ({ a: 1 }), { key: "NOHDL", session })
@@ -313,7 +313,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("sync() with no pending patches emits nothing", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { a: number };
     const store = create<S>()(
       synced(() => ({ a: 0 }), { key: "NOP", session })
@@ -333,7 +333,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("startTask and cancelTask send task events", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { a: number };
     const store = create<S>()(
       synced(() => ({ a: 0 }), { key: "TASK", session })
@@ -365,7 +365,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("shallow set object then sync emits correct replace patch", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = {
       count: number;
       setCount: (v: number) => void;
@@ -400,7 +400,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("action handler error is swallowed and logs error", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     const consoleSpy = jest
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -430,7 +430,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("nested objects/arrays/records: immer-style set, selector rerenders only on value change", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type User = { id: string; name: string; tags: string[] };
     type S = {
       value: { nested: { arr: { x: number }[]; rec: Record<string, User> } };
@@ -648,7 +648,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
               draft.constObj.str = v;
             }),
         }),
-        { key: "TEST", session: new Session("ws://localhost") }
+        { key: "TEST", session: new Session({ url: "ws://localhost" }) }
       )
     );
 
@@ -784,7 +784,7 @@ describe("synced-store e2e with real Session + mocked ws", () => {
 
   test("remote patch updates nested fields and triggers selector rerender", async () => {
     const server = new WS("ws://localhost", { jsonProtocol: true });
-    const session = new Session("ws://localhost");
+    const session = new Session({ url: "ws://localhost" });
     type S = { value: { nested: { arr: { x: number }[] } } };
     const store = create<S>()(
       synced(

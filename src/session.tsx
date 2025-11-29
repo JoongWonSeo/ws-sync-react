@@ -5,6 +5,16 @@ import { useLocalStorage, useSessionStorage } from "./utils/useStorage";
 
 export const DefaultSessionContext = createContext<Session | null>(null);
 
+export interface SessionOptions {
+  url: string;
+  label?: string;
+  toast?: any;
+  binaryType?: BinaryType;
+  minRetryInterval?: number;
+  maxRetryInterval?: number;
+  override?: boolean;
+}
+
 interface SessionProviderProps {
   url: string;
   label?: string;
@@ -34,7 +44,7 @@ export const SessionProvider = ({
     console.info(
       `[WS Session] Creating new session for ${label || "Server"} at ${url}`
     );
-    const newSession = new Session(url, label, toast, binaryType);
+    const newSession = new Session({ url, label, toast, binaryType });
     setSession(newSession);
 
     return () => {
@@ -142,23 +152,15 @@ export class Session {
   private autoReconnect: boolean = true;
   private defaultOverride: boolean = false;
 
-  constructor(
-    url: string,
-    label: string = "Server",
-    toast: any = null,
-    binaryType: BinaryType = "blob",
-    minRetryInterval: number = 250,
-    maxRetryInterval: number = 10000,
-    override: boolean = false
-  ) {
-    this.url = url;
-    this.label = label;
-    this.toast = toast;
-    this.binaryType = binaryType;
-    this.minRetryInterval = minRetryInterval;
-    this.maxRetryInterval = maxRetryInterval;
-    this.retryInterval = minRetryInterval;
-    this.defaultOverride = override;
+  constructor(options: SessionOptions) {
+    this.url = options.url;
+    this.label = options.label ?? "Server";
+    this.toast = options.toast ?? null;
+    this.binaryType = options.binaryType ?? "blob";
+    this.minRetryInterval = options.minRetryInterval ?? 250;
+    this.maxRetryInterval = options.maxRetryInterval ?? 10000;
+    this.retryInterval = this.minRetryInterval;
+    this.defaultOverride = options.override ?? false;
   }
 
   registerEvent(event: string, callback: (data: any) => void, override?: boolean) {

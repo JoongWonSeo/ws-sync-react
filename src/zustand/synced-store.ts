@@ -340,7 +340,7 @@ export const synced = syncedImpl as unknown as Synced;
 //       // },
 //       // or: resetBears: delegate.resetBears
 //     }),
-//     { key: "bear", session: new Session("ws://localhost") }
+//     { key: "bear", session: new Session({ url: "ws://localhost" }) }
 //   )
 // );
 // // access the store.foo from "outside"
@@ -365,7 +365,7 @@ export const synced = syncedImpl as unknown as Synced;
 //       // },
 //       // or: resetBears: delegate.resetBears
 //     }),
-//     { key: "bear", session: new Session("ws://localhost") }
+//     { key: "bear", session: new Session({ url: "ws://localhost" }) }
 //   )
 // );
 // // access the store.foo from "outside"
