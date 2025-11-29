@@ -140,6 +140,7 @@ export class Session {
   private binData: any | null = null; // metadata for the next binary message
   private retryTimeout: ReturnType<typeof setTimeout> | null = null; // scheduled retry
   private autoReconnect: boolean = true;
+  private defaultOverride: boolean = false;
 
   constructor(
     url: string,
@@ -147,7 +148,8 @@ export class Session {
     toast: any = null,
     binaryType: BinaryType = "blob",
     minRetryInterval: number = 250,
-    maxRetryInterval: number = 10000
+    maxRetryInterval: number = 10000,
+    override: boolean = false
   ) {
     this.url = url;
     this.label = label;
@@ -156,10 +158,12 @@ export class Session {
     this.minRetryInterval = minRetryInterval;
     this.maxRetryInterval = maxRetryInterval;
     this.retryInterval = minRetryInterval;
+    this.defaultOverride = override;
   }
 
-  registerEvent(event: string, callback: (data: any) => void) {
-    if (event in this.eventHandlers) {
+  registerEvent(event: string, callback: (data: any) => void, override?: boolean) {
+    const shouldOverride = override ?? this.defaultOverride;
+    if (event in this.eventHandlers && !shouldOverride) {
       console.error(
         `[WS Session] Attempted to registerEvent for ${event}, but handler already exists`
       );
@@ -178,8 +182,9 @@ export class Session {
     delete this.eventHandlers[event];
   }
 
-  registerInit(key: string, callback: () => void) {
-    if (key in this.initHandlers) {
+  registerInit(key: string, callback: () => void, override?: boolean) {
+    const shouldOverride = override ?? this.defaultOverride;
+    if (key in this.initHandlers && !shouldOverride) {
       console.error(
         `[WS Session] Attempted to registerInit with key=${key}, but initHandler already exists`
       );
@@ -199,8 +204,9 @@ export class Session {
     delete this.initHandlers[key];
   }
 
-  registerBinary(callback: (data: any) => void) {
-    if (this.binaryHandler !== null) {
+  registerBinary(callback: (data: any) => void, override?: boolean) {
+    const shouldOverride = override ?? this.defaultOverride;
+    if (this.binaryHandler !== null && !shouldOverride) {
       console.error(
         `[WS Session] Attempted to registerBinary, but a binary handler is already registered`
       );
