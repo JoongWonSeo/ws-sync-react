@@ -20,7 +20,6 @@
     }
   },
   "scripts": {
-    "postinstall": "husky",
     "build": "tsdown src/index.ts --format cjs,esm --dts --sourcemap --clean --out-dir dist",
     "prepublishOnly": "tsdown src/index.ts --format cjs,esm --dts --sourcemap --clean --out-dir dist",
     "test": "jest"

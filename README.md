@@ -59,8 +59,8 @@ export const useNotes = create<Notes>()(
     {
       key: "Notes",
       session,
-    }
-  )
+    },
+  ),
 );
 ```
 
@@ -131,8 +131,8 @@ const useNotes = create<Notes & NotesActions>()(
         store.sync();
       },
     }),
-    { key: "Notes", session }
-  )
+    { key: "Notes", session },
+  ),
 );
 ```
 
@@ -225,7 +225,7 @@ type Notes = { notes: Note[]; currentNoteId: string | null };
 
 // State-only store
 export const useNotes = create<Notes>()(
-  synced(() => ({ notes: [], currentNoteId: null }), { key: "Notes", session })
+  synced(() => ({ notes: [], currentNoteId: null }), { key: "Notes", session }),
 );
 
 // ========== Actions ========== //
@@ -240,7 +240,7 @@ export const selectNote = (id: string | null) => {
 export const updateNoteLocally = (
   id: string,
   title: string,
-  content: string
+  content: string,
 ) => {
   set((draft) => {
     const note = draft.notes.find((n) => n.id === id);
@@ -348,10 +348,10 @@ export function createSyncedStore<State>({
           name: "DISABLED",
           partialize: () => ({}),
           skipHydration: true,
-        }
+        },
       ),
-      devtoolsOptions
-    )
+      devtoolsOptions,
+    ),
   );
 }
 
@@ -388,8 +388,8 @@ export const useNotes = create<Notes & LocalState>()(
       key: "Notes",
       session,
       syncAttributes: ["notes", "currentNoteId"], // only sync these fields
-    }
-  )
+    },
+  ),
 );
 ```
 
@@ -407,7 +407,7 @@ export const createChatStore = (roomId: string) =>
     synced(() => ({ messages: [], members: [] }), {
       key: `ChatRoom:${roomId}`,
       session,
-    })
+    }),
   );
 
 // Registry to manage instances
@@ -420,7 +420,7 @@ export const useChatRegistry = create<ChatRegistry>(() => ({ rooms: {} }));
 // Hook to access a specific room
 export const useChatRoom = <T>(
   roomId: string,
-  selector: (s: ChatRoom) => T
+  selector: (s: ChatRoom) => T,
 ) => {
   const registry = useChatRegistry((s) => s.rooms);
 
@@ -437,10 +437,11 @@ export const useChatRoom = <T>(
 
 ## Development & Publishing
 
+Clone the repo and run `npm install` and then `npx husky` to install the pre-commit hook.
+
 After you make changes (don't forget to bump the version number!), run the following commands to publish the changes to npm:
 
 ```bash
-npm run build
 npm publish
 ```
 
