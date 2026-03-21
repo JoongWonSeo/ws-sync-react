@@ -1,6 +1,6 @@
 {
   "name": "ws-sync",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "WebSocket Sync: Frontend",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
