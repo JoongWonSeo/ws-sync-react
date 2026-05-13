@@ -94,7 +94,7 @@ type Empty = Record<string, never>;
  * // }
  * ```
  */
-type Actions<NameToKey extends { [N in keyof NameToKey]: keyof KeyToParams }, KeyToParams> = { [N in keyof NameToKey]: KeyToParams[NameToKey[N]] extends null ? (empty?: Empty) => void : (args: KeyToParams[NameToKey[N]]) => void };
+type Actions<NameToKey extends { [N in keyof NameToKey]: keyof KeyToParams }, KeyToParams> = { [N in keyof NameToKey]: KeyToParams[NameToKey[N]] extends null ? (empty?: Empty) => void : Empty extends KeyToParams[NameToKey[N]] ? (args?: KeyToParams[NameToKey[N]]) => void : (args: KeyToParams[NameToKey[N]]) => void };
 /**
  * Utility type that creates task control objects with start/cancel methods.
  *
@@ -126,7 +126,7 @@ type Actions<NameToKey extends { [N in keyof NameToKey]: keyof KeyToParams }, Ke
  * ```
  */
 type Tasks<NameToKey extends { [N in keyof NameToKey]: keyof KeyToParams }, KeyToParams> = { [N in keyof NameToKey]: {
-  start: KeyToParams[NameToKey[N]] extends null ? (empty?: Empty) => void : (args: KeyToParams[NameToKey[N]]) => void;
+  start: KeyToParams[NameToKey[N]] extends null ? (empty?: Empty) => void : Empty extends KeyToParams[NameToKey[N]] ? (args?: KeyToParams[NameToKey[N]]) => void : (args: KeyToParams[NameToKey[N]]) => void;
   cancel: () => void;
 } };
 //#endregion

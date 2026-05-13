@@ -31,7 +31,9 @@ export type Actions<
 > = {
   [N in keyof NameToKey]: KeyToParams[NameToKey[N]] extends null
     ? (empty?: Empty) => void // accepts no args or empty object only
-    : (args: KeyToParams[NameToKey[N]]) => void;
+    : Empty extends KeyToParams[NameToKey[N]]
+      ? (args?: KeyToParams[NameToKey[N]]) => void // all params optional
+      : (args: KeyToParams[NameToKey[N]]) => void;
 };
 
 /**
@@ -71,7 +73,9 @@ export type Tasks<
   [N in keyof NameToKey]: {
     start: KeyToParams[NameToKey[N]] extends null
       ? (empty?: Empty) => void // accepts no args or empty object only
-      : (args: KeyToParams[NameToKey[N]]) => void;
+      : Empty extends KeyToParams[NameToKey[N]]
+        ? (args?: KeyToParams[NameToKey[N]]) => void // all params optional
+        : (args: KeyToParams[NameToKey[N]]) => void;
     cancel: () => void;
   };
 };

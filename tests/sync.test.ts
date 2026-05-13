@@ -134,6 +134,43 @@ describe("Sync dynamic action handlers", () => {
     d.update({ index: 0, title: "New" });
   });
 
+  test("createDelegators allows omitting args when all params are optional", () => {
+    const session = new MockSession();
+    const sync = new Sync("OPT", session as any);
+
+    interface Params {
+      NO_PARAMS: null;
+      ALL_OPTIONAL: { id?: string; count?: number };
+      MIXED: { required: string; optional?: number };
+      REQUIRED: { id: string };
+    }
+
+    const map = {
+      noParams: "NO_PARAMS",
+      allOptional: "ALL_OPTIONAL",
+      mixed: "MIXED",
+      required: "REQUIRED",
+    } as const;
+
+    const d = sync.createDelegators<Params>()(map);
+
+    // null params: can omit args (already works)
+    d.noParams();
+
+    // All-optional params: can omit args
+    d.allOptional();
+    d.allOptional({ id: "x" });
+    d.allOptional({ count: 5 });
+    d.allOptional({});
+
+    // Mixed params: should still require args (has a required field)
+    d.mixed({ required: "hi" });
+    d.mixed({ required: "hi", optional: 1 });
+
+    // Required params: must provide args
+    d.required({ id: "abc" });
+  });
+
   test("createDelegators direct form infers mapping and sends actions", () => {
     const session = new MockSession();
     const sync = new Sync("DLG", session as any);
@@ -281,6 +318,36 @@ describe("Sync task delegators", () => {
     tasks.importData.cancel();
     tasks.processData.start();
     tasks.processData.cancel();
+  });
+
+  test("createTaskDelegators allows omitting args when all params are optional", () => {
+    const session = new MockSession();
+    const sync = new Sync("TOPT", session as any);
+
+    interface Params {
+      NO_PARAMS: null;
+      ALL_OPTIONAL: { id?: string; count?: number };
+      REQUIRED: { id: string };
+    }
+
+    const map = {
+      noParams: "NO_PARAMS",
+      allOptional: "ALL_OPTIONAL",
+      required: "REQUIRED",
+    } as const;
+
+    const tasks = sync.createTaskDelegators<Params>()(map);
+
+    // null params: can omit args (already works)
+    tasks.noParams.start();
+
+    // All-optional params: can omit args
+    tasks.allOptional.start();
+    tasks.allOptional.start({ id: "x" });
+    tasks.allOptional.start({});
+
+    // Required params: must provide args
+    tasks.required.start({ id: "abc" });
   });
 
   test("createTaskDelegators sends TASK_START and TASK_CANCEL events", () => {
