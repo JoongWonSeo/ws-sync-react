@@ -31,16 +31,16 @@ type Cast<T, U> = T extends U ? T : U;
 type SkipTwo<T> = T extends { length: 0 }
   ? []
   : T extends { length: 1 }
-  ? []
-  : T extends { length: 0 | 1 }
-  ? []
-  : T extends [unknown, unknown, ...infer A]
-  ? A
-  : T extends [unknown, unknown?, ...infer A]
-  ? A
-  : T extends [unknown?, unknown?, ...infer A]
-  ? A
-  : never;
+    ? []
+    : T extends { length: 0 | 1 }
+      ? []
+      : T extends [unknown, unknown, ...infer A]
+        ? A
+        : T extends [unknown, unknown?, ...infer A]
+          ? A
+          : T extends [unknown?, unknown?, ...infer A]
+            ? A
+            : never;
 
 type SetStateType<T extends unknown[]> = Exclude<T[0], (...args: any[]) => any>;
 
@@ -85,29 +85,29 @@ export interface SyncOptions {
 // attached to the store with helpers
 type CreateDelegatorsFn = {
   <KeyToParams extends object>(): <
-    NameToKey extends Record<string, keyof KeyToParams>
+    NameToKey extends Record<string, keyof KeyToParams>,
   >(
-    nameToKey: NameToKey
+    nameToKey: NameToKey,
   ) => Actions<NameToKey, KeyToParams>;
   <
     KeyToParams extends object,
-    NameToKey extends Record<string, keyof KeyToParams>
+    NameToKey extends Record<string, keyof KeyToParams>,
   >(
-    nameToKey: NameToKey
+    nameToKey: NameToKey,
   ): Actions<NameToKey, KeyToParams>;
 };
 
 type CreateTaskDelegatorsFn = {
   <KeyToParams extends object>(): <
-    NameToKey extends Record<string, keyof KeyToParams>
+    NameToKey extends Record<string, keyof KeyToParams>,
   >(
-    nameToKey: NameToKey
+    nameToKey: NameToKey,
   ) => Tasks<NameToKey, KeyToParams>;
   <
     KeyToParams extends object,
-    NameToKey extends Record<string, keyof KeyToParams>
+    NameToKey extends Record<string, keyof KeyToParams>,
   >(
-    nameToKey: NameToKey
+    nameToKey: NameToKey,
   ): Tasks<NameToKey, KeyToParams>;
 };
 
@@ -126,25 +126,25 @@ type Sync = {
   fetchRemoteState: () => void;
   sendState: <S>(state: S) => void;
   registerExposedActions: <
-    Handlers extends Record<string, (...args: any[]) => void>
+    Handlers extends Record<string, (...args: any[]) => void>,
   >(
-    handlers: Handlers
+    handlers: Handlers,
   ) => () => void;
   useExposedActions: <
-    Handlers extends Record<string, (...args: any[]) => void>
+    Handlers extends Record<string, (...args: any[]) => void>,
   >(
-    handlers: Handlers
+    handlers: Handlers,
   ) => void;
   useIsSynced: () => boolean;
 };
 
-type Synced = <
+export type Synced = <
   State,
   Mps extends [StoreMutatorIdentifier, unknown][] = [], // store mutators from parent middlewares
-  Mcs extends [StoreMutatorIdentifier, unknown][] = [] // store mutators from child middlewares
+  Mcs extends [StoreMutatorIdentifier, unknown][] = [], // store mutators from child middlewares
 >(
   stateCreator: StateCreator<State, [...Mps, ["sync", Sync]], Mcs>, // forward the mutators from our parent middlewares along with our mutation to the child middleware
-  syncOptions: SyncOptions
+  syncOptions: SyncOptions,
 ) => StateCreator<State, Mps, [["sync", Sync], ...Mcs]>; // forward our mutation along with the mutators from our child middlewares
 
 // register our store mutator with zustand
@@ -157,7 +157,7 @@ declare module "zustand/vanilla" {
 // ========== implementation of the middleware ========== //
 type SyncedImpl = <State>(
   stateCreator: StateCreator<State, [], []>,
-  syncOptions: SyncOptions
+  syncOptions: SyncOptions,
 ) => StateCreator<State, [], []>;
 
 enablePatches();
@@ -167,15 +167,15 @@ const syncedImpl: SyncedImpl =
     type State = ReturnType<typeof stateCreator>;
 
     const syncAttributes: Set<string> | null = Array.isArray(
-      syncOptions.syncAttributes
+      syncOptions.syncAttributes,
     )
       ? new Set(syncOptions.syncAttributes)
       : syncOptions.syncAttributes !== undefined
-      ? new Set(Object.keys(syncOptions.syncAttributes))
-      : null;
+        ? new Set(Object.keys(syncOptions.syncAttributes))
+        : null;
 
     const extractSyncedSubset = <T extends Record<string, unknown>>(
-      source: T
+      source: T,
     ): Partial<T> => {
       if (!syncAttributes) {
         // implicitly sync all attributes
@@ -209,7 +209,7 @@ const syncedImpl: SyncedImpl =
     const syncObj = new SyncObj(
       syncOptions.key,
       syncOptions.session,
-      syncOptions.sendOnInit
+      syncOptions.sendOnInit,
     );
 
     // wrap the setter to add immer support along with saving the generated patches
@@ -235,12 +235,12 @@ const syncedImpl: SyncedImpl =
         // new state is already given, convert to patch
         const newState = updater;
         const shallowUpdate = extractSyncedSubset(
-          (newState as Record<string, any>) ?? {}
+          (newState as Record<string, any>) ?? {},
         ) as Record<string, unknown>;
         // save as patch with base snapshot, so that it can be synced later
         syncObj.appendPatch(
           convertShallowUpdateToImmerPatch(shallowUpdate),
-          get() as unknown as object
+          get() as unknown as object,
         );
 
         return set(newState, replace as any, ...args);
@@ -253,7 +253,7 @@ const syncedImpl: SyncedImpl =
       (s: State) => {
         // replace entire state
         const nextState = extractSyncedSubset(
-          s as Record<string, unknown>
+          s as Record<string, unknown>,
         ) as State;
         set(nextState);
       },
@@ -275,11 +275,11 @@ const syncedImpl: SyncedImpl =
             // users can handle their own errors inside action methods
             console.error(
               `[zustand synced] error invoking action handler for ${action.type}:`,
-              err
+              err,
             );
           }
         }
-      }
+      },
     );
 
     // expose a callable sync function with helper methods bound to syncObj
@@ -289,7 +289,8 @@ const syncedImpl: SyncedImpl =
 
     // attach only the public helpers we want to expose
     callableSync.createDelegators = syncObj.createDelegators.bind(syncObj);
-    callableSync.createTaskDelegators = syncObj.createTaskDelegators.bind(syncObj);
+    callableSync.createTaskDelegators =
+      syncObj.createTaskDelegators.bind(syncObj);
     callableSync.sendAction = syncObj.sendAction.bind(syncObj);
     callableSync.startTask = syncObj.startTask.bind(syncObj);
     callableSync.cancelTask = syncObj.cancelTask.bind(syncObj);
